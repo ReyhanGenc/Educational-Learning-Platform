@@ -64,12 +64,6 @@ const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse
         />
       </div>
 
-      <div className="flex gap-10 border-b border-slate-300 overflow-x-auto whitespace-nowrap shrink-0">
-        <button className="pb-4 text-[9px] font-black border-b-[2px] border-brand-500 text-brand-500 uppercase tracking-[0.3em]">Ongoing</button>
-        <button className="pb-4 text-[9px] font-bold text-slate-500 hover:text-brand-500 transition-colors uppercase tracking-[0.3em] px-2">Completed</button>
-        <button className="pb-4 text-[9px] font-bold text-slate-500 hover:text-brand-500 transition-colors uppercase tracking-[0.3em] px-2">Recommended</button>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 overflow-y-auto custom-scrollbar pb-20 px-2">
         {filteredCourses.length > 0 ? (
           filteredCourses.map(course => (

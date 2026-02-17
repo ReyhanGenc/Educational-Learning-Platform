@@ -3,11 +3,13 @@ import React from 'react';
 
 interface LandingPageProps {
   onStart: () => void;
+  onRegister: () => void;
+  onPricing: () => void;
   onViewLessons?: () => void;
   onSelectLesson?: (id: string) => void;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSelectLesson }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ onStart, onRegister, onPricing, onViewLessons, onSelectLesson }) => {
   const featuredLessons = [
     { id: '1', title: 'Vector Space Foundations', category: 'Math', image: 'https://picsum.photos/seed/math-hero/600/400', desc: 'A geometric deep-dive into linear combinations.' },
     { id: '2', title: 'CRISPR & Gene Editing', category: 'Biology', image: 'https://picsum.photos/seed/bio-hero/600/400', desc: 'Understanding the future of molecular genetics.' },
@@ -30,25 +32,25 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
               </div>
               <span className="font-bold text-2xl tracking-tight text-slate-900">EduExam</span>
             </div>
-            
+
             <div className="hidden md:flex items-center gap-10">
               <a href="#lessons" className="text-sm font-semibold text-slate-500 hover:text-brand-500 transition-colors uppercase tracking-widest">Explanations</a>
               <a href="#features" className="text-sm font-semibold text-slate-500 hover:text-brand-500 transition-colors uppercase tracking-widest">Features</a>
-              <a href="#pricing" className="text-sm font-semibold text-slate-500 hover:text-brand-500 transition-colors uppercase tracking-widest">Pricing</a>
+              <button onClick={onPricing} className="text-sm font-semibold text-slate-500 hover:text-brand-500 transition-colors uppercase tracking-widest">Pricing</button>
             </div>
 
             <div className="flex items-center gap-4">
-              <button 
+              <button
                 onClick={onStart}
                 className="hidden sm:block text-sm font-bold text-slate-600 hover:text-brand-500 transition-colors"
               >
                 Sign In
               </button>
-              <button 
-                onClick={onStart}
+              <button
+                onClick={onRegister}
                 className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-xl shadow-brand-500/20 active:scale-95 flex items-center gap-2"
               >
-                Join Now
+                Sign Up for Free
                 <span className="material-symbols-outlined text-sm">arrow_forward</span>
               </button>
             </div>
@@ -64,26 +66,26 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
             </span>
-            Platform version 4.0 is now live
+            Future of Learning
           </div>
-          
+
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-slate-900 tracking-tight leading-[0.95] mb-8 max-w-5xl mx-auto">
             The future of <span className="bg-gradient-to-r from-brand-500 to-indigo-600 bg-clip-text text-transparent">academic success</span> is here.
           </h1>
-          
+
           <p className="text-xl md:text-2xl text-slate-500 mb-12 max-w-2xl mx-auto leading-relaxed font-medium">
             Elevate learning with precision exam tools, immersive 3D content, and analytics that actually make sense.
           </p>
-          
+
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
-            <button 
+            <button
               onClick={onStart}
               className="w-full sm:w-auto px-10 py-5 bg-slate-900 hover:bg-black text-white text-lg font-bold rounded-2xl shadow-2xl transition-all flex items-center justify-center gap-3 group"
             >
               Get Started for Free
               <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">bolt</span>
             </button>
-            <button 
+            <button
               onClick={onViewLessons}
               className="w-full sm:w-auto px-10 py-5 bg-white border border-slate-200 text-slate-700 text-lg font-bold rounded-2xl hover:bg-slate-50 transition-all shadow-sm flex items-center justify-center gap-2"
             >
@@ -106,7 +108,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
                 Our immersive Lesson Explanations break down advanced institutional concepts into visual, interactive deep-dives.
               </p>
             </div>
-            <button 
+            <button
               onClick={onViewLessons}
               className="px-8 py-4 bg-brand-50 text-brand-600 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] hover:bg-brand-500 hover:text-white transition-all shadow-sm active:scale-95"
             >
@@ -116,8 +118,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
             {featuredLessons.map((lesson, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className="group relative bg-slate-50 rounded-[40px] overflow-hidden border border-slate-100 hover:border-brand-500 transition-all cursor-pointer hover:shadow-2xl"
                 onClick={() => onSelectLesson?.(lesson.id)}
               >
@@ -158,7 +160,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
               <p className="text-lg text-slate-500 mb-10 leading-relaxed font-medium">
                 Our suite of tools eliminates administrative overhead, letting you focus on what matters most: student growth and meaningful assessment.
               </p>
-              
+
               <div className="space-y-6">
                 {[
                   { title: "Smart Proctoring", desc: "AI-driven identity verification and activity monitoring.", icon: "security" },
@@ -177,7 +179,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
                 ))}
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4 pt-12">
                 <div className="bg-white p-2 rounded-3xl shadow-xl border border-slate-100">
@@ -201,60 +203,23 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onViewLessons, onSel
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-20 px-4 border-t border-slate-100">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-start gap-12 mb-16">
-            <div className="max-w-sm">
-              <div className="flex items-center gap-2.5 mb-6">
-                <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white">
-                  <span className="material-symbols-outlined text-[20px]">school</span>
-                </div>
-                <span className="font-bold text-2xl tracking-tight text-slate-900">EduExam</span>
-              </div>
-              <p className="text-slate-500 font-medium leading-relaxed">
-                Empowering the next generation of learners through innovative technology and student-first design.
-              </p>
+      <footer className="py-12 px-4 border-t border-slate-100 bg-white">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white">
+              <span className="material-symbols-outlined text-[20px]">school</span>
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-16">
-              <div>
-                <h5 className="font-bold text-slate-900 mb-6 uppercase text-xs tracking-widest">Platform</h5>
-                <ul className="space-y-4 text-sm font-semibold text-slate-500">
-                  <li><a href="#lessons" className="hover:text-brand-500 transition-colors">Explanations</a></li>
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">Examinations</a></li>
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">Learning Hub</a></li>
-                </ul>
-              </div>
-              <div>
-                <h5 className="font-bold text-slate-900 mb-6 uppercase text-xs tracking-widest">Company</h5>
-                <ul className="space-y-4 text-sm font-semibold text-slate-500">
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">About Us</a></li>
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">Careers</a></li>
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">Contact</a></li>
-                </ul>
-              </div>
-              <div className="hidden md:block">
-                <h5 className="font-bold text-slate-900 mb-6 uppercase text-xs tracking-widest">Legal</h5>
-                <ul className="space-y-4 text-sm font-semibold text-slate-500">
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">Privacy Policy</a></li>
-                  <li><a href="#" className="hover:text-brand-500 transition-colors">Terms of Service</a></li>
-                </ul>
-              </div>
-            </div>
+            <span className="font-bold text-xl tracking-tight text-slate-900">EduExam</span>
           </div>
-          
-          <div className="pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-slate-400 text-sm font-medium">&copy; 2024 EduExam Academic Systems. All rights reserved.</p>
-            <div className="flex gap-6">
-              <span className="material-symbols-outlined text-slate-400 hover:text-brand-500 cursor-pointer">language</span>
-              <span className="material-symbols-outlined text-slate-400 hover:text-brand-500 cursor-pointer">public</span>
-              <span className="material-symbols-outlined text-slate-400 hover:text-brand-500 cursor-pointer">verified</span>
-            </div>
+
+          <p className="text-slate-400 text-sm font-medium">&copy; 2024 EduExam Academic Systems. All rights reserved.</p>
+
+          <div className="flex gap-6">
+            {/* Empty icons removed */}
           </div>
         </div>
       </footer>
-      
+
       {/* Custom Styles for landing specific animations */}
       <style>{`
         @keyframes bounce-subtle {

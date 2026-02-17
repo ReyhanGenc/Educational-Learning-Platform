@@ -37,7 +37,6 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
             </p>
           </div>
         </div>
-        <button className="material-symbols-outlined p-2 hover:bg-slate-100 rounded-xl transition-all text-slate-600 font-bold">more_horiz</button>
       </header>
 
       {/* Hero Image Section */}
@@ -61,10 +60,6 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
               <div className="bg-brand-50 border border-brand-200 px-6 py-4 rounded-2xl flex flex-col">
                 <span className="text-[9px] font-black text-brand-600 uppercase tracking-widest">Difficulty</span>
                 <span className="text-xs font-black text-brand-700 uppercase tracking-widest mt-0.5">Advanced</span>
-              </div>
-              <div className="bg-indigo-50 border border-indigo-200 px-6 py-4 rounded-2xl flex flex-col">
-                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Enrollment</span>
-                <span className="text-xs font-black text-indigo-700 uppercase tracking-widest mt-0.5">Institutional</span>
               </div>
             </div>
           </section>
@@ -111,14 +106,14 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
                 <h3 className="text-xl font-black tracking-tight uppercase">Performance Goal</h3>
                 <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1 font-bold">Institutional Benchmark</p>
               </div>
-              <div className="flex flex-col items-center justify-center py-6">
-                <div className="text-5xl font-black tracking-tighter">{previewMode ? 'Try' : '88%'}</div>
-                <div className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.3em] mt-2">{previewMode ? 'Free Access' : 'Predicted Mastery'}</div>
-              </div>
               {!previewMode && (
-                <button className="w-full bg-brand-500 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all active:scale-95">
-                  Share Progress
-                </button>
+                <div className="flex flex-col items-center justify-center py-6">
+                  <div className="text-5xl font-black tracking-tighter">88%</div>
+                  <div className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.3em] mt-2">Predicted Mastery</div>
+                </div>
+              )}
+              {!previewMode && (
+                <div className="h-4"></div>
               )}
             </div>
           </div>
@@ -133,12 +128,11 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
             ) : (
               <div className="space-y-4">
                 {['Lecture Notes.pdf', 'Cheat Sheet.pdf', 'Exercise Lab.zip'].map((res, i) => (
-                  <div key={i} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-200 group cursor-pointer hover:bg-white transition-all">
+                  <div key={i} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-200 group transition-all">
                     <div className="flex items-center gap-4">
                       <span className="material-symbols-outlined text-slate-600 font-bold">description</span>
                       <span className="text-xs font-black text-slate-800 uppercase tracking-widest">{res}</span>
                     </div>
-                    <span className="material-symbols-outlined text-slate-500 group-hover:text-brand-500 font-bold">download</span>
                   </div>
                 ))}
               </div>

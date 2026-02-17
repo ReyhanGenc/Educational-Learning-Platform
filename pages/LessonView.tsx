@@ -75,22 +75,22 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack }) => {
                   <img src="https://picsum.photos/seed/chem-3d/800/600" className="w-full h-full object-cover" alt="3D View" />
                   <div className="absolute bottom-4 right-4 bg-black/70 px-3 py-1.5 rounded-xl text-[10px] text-white font-black tracking-widest uppercase">3D MODEL</div>
                 </div>
-                <div 
-                  className="absolute inset-0 border-r-4 border-white z-10" 
+                <div
+                  className="absolute inset-0 border-r-4 border-white z-10"
                   style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
                 >
                   <img src="https://picsum.photos/seed/chem-2d/800/600" className="w-full h-full object-cover" alt="2D View" />
                   <div className="absolute bottom-4 left-4 bg-black/70 px-3 py-1.5 rounded-xl text-[10px] text-white font-black tracking-widest uppercase">2D FORMULA</div>
                 </div>
-                <input 
-                  type="range" 
-                  min="0" max="100" 
+                <input
+                  type="range"
+                  min="0" max="100"
                   value={sliderPos}
                   onChange={handleSliderChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-col-resize z-20"
                 />
-                <div 
-                  className="absolute top-0 bottom-0 w-1 bg-white z-10 pointer-events-none" 
+                <div
+                  className="absolute top-0 bottom-0 w-1 bg-white z-10 pointer-events-none"
                   style={{ left: `${sliderPos}%` }}
                 >
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white shadow-lg">
@@ -131,11 +131,6 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack }) => {
         </div>
       </main>
 
-      <footer className="fixed bottom-0 left-0 lg:left-[280px] right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 p-4 pb-8 lg:pb-4 flex justify-end px-10 z-40 shadow-inner">
-        <button className="w-16 h-14 bg-slate-100 text-slate-700 rounded-2xl flex items-center justify-center hover:bg-slate-200 border border-slate-200 transition-all active:scale-95">
-          <span className="material-symbols-outlined font-bold">bookmark</span>
-        </button>
-      </footer>
     </div>
   );
 };

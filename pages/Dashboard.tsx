@@ -101,10 +101,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
                 <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">Cohort Grade Performance</h3>
                 <p className="text-slate-700 text-xs font-medium">Institutional Average Metrics</p>
               </div>
-              <div className="flex bg-slate-100 p-1.5 rounded-lg border border-slate-200">
-                <button className="px-6 py-2 text-[10px] font-black rounded-md bg-white shadow-sm text-brand-600 uppercase">6 Months</button>
-                <button className="px-6 py-2 text-[10px] font-bold rounded-md text-slate-600 hover:text-slate-800 transition-colors uppercase">Yearly</button>
-              </div>
             </div>
             <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -186,10 +182,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
               </span>
             )}
           </button>
-          <button className="bg-white border border-slate-300 p-3 rounded-xl hover:bg-slate-50 transition-all relative shadow-sm">
-            <span className="material-symbols-outlined text-slate-700 text-xl">notifications</span>
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
           <div className="w-12 h-12 rounded-xl bg-brand-500 p-0.5 shadow-lg shadow-brand-500/10 cursor-pointer hover:scale-105 transition-transform overflow-hidden ring-2 ring-white">
             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" alt="Profile" className="w-full h-full object-cover rounded-lg" />
           </div>
@@ -236,10 +228,6 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
             <div>
               <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase tracking-wider">Learning Momentum</h3>
               <p className="text-slate-700 text-xs font-medium">Productivity Tracking</p>
-            </div>
-            <div className="flex bg-slate-100 p-1.5 rounded-lg border border-slate-200">
-              <button className="px-6 py-2 text-[10px] font-black rounded-md bg-white shadow-sm text-brand-600 uppercase">Week</button>
-              <button className="px-6 py-2 text-[10px] font-bold rounded-md text-slate-600 hover:text-slate-800 transition-colors uppercase">Month</button>
             </div>
           </div>
 

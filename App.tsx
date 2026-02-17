@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { UserRole, Course } from './types';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
+import Register from './pages/Register';
+import Pricing from './pages/Pricing';
 import Dashboard from './pages/Dashboard';
 import ExamList from './pages/ExamList';
 import ExamTaker from './pages/ExamTaker';
@@ -22,7 +24,7 @@ import Payment from './pages/Payment';
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole | null>(null);
-  const [view, setView] = useState<'landing' | 'login' | 'app' | 'public-lessons'>('landing');
+  const [view, setView] = useState<'landing' | 'login' | 'register' | 'pricing' | 'app' | 'public-lessons'>('landing');
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([
@@ -78,6 +80,13 @@ const App: React.FC = () => {
     setActiveCourseId(null);
   };
 
+  const handleRegister = (selectedRole: UserRole, name: string) => {
+    setRole(selectedRole);
+    setView('app');
+    setCurrentPage('dashboard');
+    // In a real app, we would save the name too
+  };
+
   const handleViewPublicLessons = () => {
     setView('public-lessons');
     setCurrentPage('lessons-list');
@@ -92,14 +101,24 @@ const App: React.FC = () => {
     return (
       <LandingPage
         onStart={() => setView('login')}
+        onRegister={() => setView('register')}
+        onPricing={() => setView('pricing')}
         onViewLessons={handleViewPublicLessons}
         onSelectLesson={handleSelectPublicLesson}
       />
     );
   }
 
+  if (view === 'register') {
+    return <Register onRegister={handleRegister} onLogin={() => setView('login')} onBack={() => setView('landing')} />;
+  }
+
+  if (view === 'pricing') {
+    return <Pricing onStart={() => setView('register')} onBack={() => setView('landing')} />;
+  }
+
   if (view === 'login' && !role) {
-    return <Login onLogin={handleLogin} onBack={() => setView('landing')} />;
+    return <Login onLogin={handleLogin} onRegister={() => setView('register')} onBack={() => setView('landing')} />;
   }
 
   // Handle Public Lessons Viewer (Unauthenticated)
