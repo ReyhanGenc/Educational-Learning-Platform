@@ -1,0 +1,8 @@
+{
+  "name": "EduExam",
+  "description": "A comprehensive academic platform for students and instructors featuring exam management, progress tracking, and interactive learning content.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
