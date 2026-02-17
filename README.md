@@ -1,20 +1,58 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Educational Learning Platform
 
-# Run and deploy your AI Studio app
+A modern, premium Learning Management System (LMS) and Examination platform designed for elite academic experiences. This project features a comprehensive suite of tools for both students and instructors, focused on intuitive workflows and data-driven insights.
 
-This contains everything you need to run your app locally.
+## 🚀 Key Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1SEsgRoEXVp_dImqxpvYEkQrsv-eaKa7W
+### 🎓 For Students
+- **Smart Dashboard:** Personalized overview of course progress, upcoming exams, and performance metrics.
+- **Curriculum Catalog:** Searchable database of institutional courses with category filtering.
+- **Smart Course Preview:** Explore the first chapter of any course before purchasing to understand the curriculum.
+- **Integrated Shopping Cart:** Seamless experience for selecting and purchasing academic modules.
+- **Exam Hub:** Secure environment for launching assessments and viewing historical results.
+- **Learning Analytics:** Real-time tracking of mastery levels and academic benchmarks using Recharts.
 
-## Run Locally
+### 👨‍🏫 For Instructors
+- **Management Suite:** Specialized dashboard for managing course repositories and student analytics.
+- **Performance Monitoring:** In-depth metrics for cohort grade performance and unit engagement.
 
-**Prerequisites:**  Node.js
+## 🛠️ Tech Stack
 
+- **Frontend:** [React.js](https://reactjs.org/) + [Vite](https://vitejs.dev/)
+- **Language:** [TypeScript](https://www.typescriptlang.org/)
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+- **Icons:** [Material Symbols](https://fonts.google.com/icons)
+- **Charts:** [Recharts](https://recharts.org/)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🏁 Getting Started
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (Latest LTS recommended)
+- [npm](https://www.npmjs.com/)
+
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/ReyhanGenc/Educational-Learning-Platform.git
+   ```
+2. Navigate to project directory:
+   ```bash
+   cd Educational-Learning-Platform
+   ```
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+## 📜 Project Structure
+- `/pages`: Main application views (Dashboard, Catalog, Exams, etc.)
+- `/components`: Reusable UI elements (Sidebar, CartDrawer, MobileNav)
+- `/types`: TypeScript interface definitions
+- `App.tsx`: Central application logic and routing
+
+---
+*Developed with focus on academic excellence and user experience.*
