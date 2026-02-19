@@ -3,15 +3,31 @@ import React, { useState, useEffect } from 'react';
 
 interface ExamTakerProps {
   onExit: () => void;
-  onSubmit: () => void;
+  onSubmit?: () => void;
+  onComplete?: (score: number) => void;
+  examData?: any;
 }
 
-const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit }) => {
+const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, examData }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(6322); // ~1h 45m
-  const [currentQuestion, setCurrentQuestion] = useState(12);
+  const [timeLeft, setTimeLeft] = useState(examData?.duration ? examData.duration * 60 : 3600);
+  const [currentQuestion, setCurrentQuestion] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const totalQuestions = 50;
+  const totalQuestions = 5; // Simplified for unit exam
+
+  // ... (timer logic)
+
+  const handleFinish = () => {
+    // Calculate score (random for demo or 100 for simplicity)
+    const score = 100; // Mock score
+    if (onComplete) {
+      onComplete(score);
+    } else if (onSubmit) {
+      onSubmit();
+    }
+  };
+
+  // Replace existing onSubmit in modal with handleFinish
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -98,15 +114,13 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit }) => {
                 <button
                   key={opt.id}
                   onClick={() => setSelectedOption(opt.id)}
-                  className={`group flex items-center gap-4 rounded-2xl border-2 p-6 transition-all text-left ${
-                    selectedOption === opt.id 
-                    ? 'border-brand-500 bg-brand-50' 
+                  className={`group flex items-center gap-4 rounded-2xl border-2 p-6 transition-all text-left ${selectedOption === opt.id
+                    ? 'border-brand-500 bg-brand-50'
                     : 'border-slate-100 hover:border-slate-200 bg-white'
-                  }`}
+                    }`}
                 >
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-bold text-sm ${
-                    selectedOption === opt.id ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-200 text-slate-500'
-                  }`}>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-bold text-sm ${selectedOption === opt.id ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-200 text-slate-500'
+                    }`}>
                     {opt.id}
                   </div>
                   <div className="flex grow font-black text-xs uppercase tracking-widest text-slate-800">{opt.label}</div>
@@ -121,19 +135,18 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit }) => {
           <h3 className="text-lg font-black mb-6 uppercase tracking-tight text-slate-900">Question Index</h3>
           <div className="grid grid-cols-5 gap-2">
             {[...Array(25)].map((_, i) => (
-              <div 
-                key={i} 
-                className={`aspect-square flex items-center justify-center rounded-xl font-bold text-xs cursor-pointer transition-all ${
-                  i + 1 < currentQuestion ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' :
+              <div
+                key={i}
+                className={`aspect-square flex items-center justify-center rounded-xl font-bold text-xs cursor-pointer transition-all ${i + 1 < currentQuestion ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' :
                   i + 1 === currentQuestion ? 'border-2 border-brand-500 bg-brand-50 text-brand-500' :
-                  'border border-slate-200 text-slate-600 hover:border-slate-400'
-                }`}
+                    'border border-slate-200 text-slate-600 hover:border-slate-400'
+                  }`}
               >
                 {i + 1}
               </div>
             ))}
           </div>
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="w-full mt-10 bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all active:scale-95"
           >
@@ -144,7 +157,7 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit }) => {
 
       <footer className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 p-4 pb-8 lg:pb-4 z-40">
         <div className="max-w-3xl mx-auto flex gap-4">
-          <button 
+          <button
             disabled={currentQuestion === 1}
             onClick={() => setCurrentQuestion(prev => Math.max(1, prev - 1))}
             className="flex-1 flex items-center justify-center gap-2 py-5 rounded-2xl border border-slate-200 font-black text-[10px] uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
@@ -152,7 +165,7 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit }) => {
             <span className="material-symbols-outlined text-lg">arrow_back</span>
             Previous
           </button>
-          <button 
+          <button
             onClick={handleNext}
             className="flex-1 flex items-center justify-center gap-2 py-5 rounded-2xl bg-brand-500 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:bg-brand-600 transition-colors"
           >
@@ -168,20 +181,20 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit }) => {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-md rounded-[32px] p-10 shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-scale-up">
             <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mb-8 border border-amber-100 shadow-inner">
-               <span className="material-symbols-outlined text-4xl font-bold">warning</span>
+              <span className="material-symbols-outlined text-4xl font-bold">warning</span>
             </div>
             <h3 className="text-2xl font-black text-slate-900 tracking-tight uppercase mb-4">Finish Exam?</h3>
             <p className="text-slate-600 text-sm leading-relaxed font-medium mb-10">
               Are you sure you want to finish the exam? {currentQuestion < totalQuestions ? <>You have <span className="text-brand-500 font-bold">{totalQuestions - currentQuestion}</span> questions remaining.</> : <>You have reached the end of the exam.</>} This action cannot be undone.
             </p>
             <div className="flex flex-col w-full gap-3">
-              <button 
-                onClick={onSubmit}
+              <button
+                onClick={handleFinish}
                 className="w-full bg-brand-500 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all active:scale-95"
               >
                 Yes, Finalize Submission
               </button>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="w-full bg-slate-100 text-slate-600 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-slate-200 hover:bg-slate-200 transition-all"
               >

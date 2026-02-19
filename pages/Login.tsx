@@ -3,13 +3,17 @@ import React, { useState } from 'react';
 import { UserRole } from '../types';
 
 interface LoginProps {
-  onLogin: (role: UserRole) => void;
+  onLogin: (role: UserRole, email?: string, password?: string, rememberMe?: boolean) => void;
   onRegister: () => void;
   onBack: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.STUDENT);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative">
@@ -62,9 +66,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">mail</span>
                 <input
-                  defaultValue={selectedRole === UserRole.STUDENT ? 'student@eduexam.edu' : 'smith@eduexam.edu'}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl py-3.5 pl-11 pr-4 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                   type="email"
+                  placeholder="name@example.com"
                 />
               </div>
             </div>
@@ -74,12 +80,20 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">lock</span>
                 <input
-                  defaultValue="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl py-3.5 pl-11 pr-11 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
                 />
-                <button className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <span className="material-symbols-outlined text-xl">visibility</span>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    {showPassword ? 'visibility_off' : 'visibility'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -87,14 +101,19 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
 
           <div className="flex items-center justify-between mt-6 mb-8">
             <label className="flex items-center cursor-pointer group">
-              <input type="checkbox" className="w-5 h-5 rounded border-slate-300 text-brand-500 focus:ring-brand-500 transition-all" />
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-5 h-5 rounded border-slate-300 text-brand-500 focus:ring-brand-500 transition-all"
+              />
               <span className="ml-2 text-sm text-slate-600">Remember me</span>
             </label>
             <button className="text-sm text-brand-500 font-semibold hover:underline">Forgot password?</button>
           </div>
 
           <button
-            onClick={() => onLogin(selectedRole)}
+            onClick={() => onLogin(selectedRole, email, password, rememberMe)}
             className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-brand-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
           >
             Sign In

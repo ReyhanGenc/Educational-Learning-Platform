@@ -1,106 +1,215 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { UserRole } from '../types';
+import { useAuth } from '../src/contexts/AuthContext';
 
 interface SettingsProps {
   role: UserRole;
 }
 
 const Settings: React.FC<SettingsProps> = ({ role }) => {
-  const isStudent = role === UserRole.STUDENT;
+  const { user, userMetadata, signOut, updateProfile, resetProgress } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [newName, setNewName] = useState(userMetadata?.full_name || '');
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'notifications'>('profile');
+
+  const displayName = userMetadata?.full_name || 'User';
+  const email = user?.email || 'No email';
+
+  const handleUpdate = async () => {
+    if (!newName.trim()) return;
+    setLoading(true);
+    try {
+      await updateProfile(newName);
+      setIsEditing(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetProgress = async () => {
+    if (window.confirm('Are you sure you want to reset your learning progress? This will clear all course completion data but keep your purchases. This action cannot be undone.')) {
+      try {
+        await resetProgress();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to reset progress');
+      }
+    }
+  };
 
   return (
-    <div className="p-4 lg:p-10 max-w-4xl mx-auto space-y-10 pb-24 lg:pb-10">
-      <header>
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight uppercase">Account Settings</h1>
-        <p className="text-slate-500 mt-1 font-medium">Manage your personal information and institutional preferences.</p>
+    <div className="p-6 lg:p-10 max-w-6xl mx-auto pb-24 space-y-8">
+      <header className="mb-8">
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight uppercase tracking-[0.1em]">Settings</h1>
+        <p className="text-slate-600 mt-1 text-sm font-medium">Manage your account preferences and profile.</p>
       </header>
 
-      <section className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-10 border-b border-slate-100 flex flex-col sm:flex-row items-center gap-8">
-          <div className="relative group">
-            <div className="w-28 h-28 rounded-[32px] bg-brand-100 overflow-hidden border-4 border-white shadow-xl">
-              <img 
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${isStudent ? 'Alex' : 'Instructor'}`} 
-                alt="Avatar" 
-                className="w-full h-full object-cover" 
-              />
-            </div>
-            <button className="absolute -bottom-2 -right-2 bg-brand-500 text-white p-2.5 rounded-2xl shadow-lg hover:bg-brand-600 transition-all border-2 border-white">
-              <span className="material-symbols-outlined text-sm">photo_camera</span>
+      <div className="flex flex-col lg:flex-row gap-8">
+        {/* Sidebar Navigation */}
+        <div className="w-full lg:w-64 flex-shrink-0">
+          <nav className="space-y-2">
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'profile'
+                ? 'bg-brand-50 text-brand-600'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
+            >
+              <span className="material-symbols-outlined">person</span>
+              Profile Info
             </button>
-          </div>
-          <div className="text-center sm:text-left space-y-2">
-            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{isStudent ? 'Alex Johnson' : 'Professor Smith'}</h3>
-            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest opacity-80">{isStudent ? 'Computer Science Undergraduate' : 'Department of Data Science'}</p>
-            <div className="mt-4 flex gap-3 justify-center sm:justify-start">
-              <span className="px-4 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase rounded-full tracking-widest border border-emerald-100 shadow-sm">Verified Profile</span>
-              <span className="px-4 py-1 bg-slate-50 text-slate-500 text-[9px] font-black uppercase rounded-full tracking-widest border border-slate-200 shadow-sm">Tier: Institutional</span>
-            </div>
-          </div>
+            <button
+              onClick={() => setActiveTab('account')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'account'
+                ? 'bg-brand-50 text-brand-600'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
+            >
+              <span className="material-symbols-outlined">manage_accounts</span>
+              Account Security
+            </button>
+            <button
+              onClick={() => setActiveTab('notifications')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'notifications'
+                ? 'bg-brand-50 text-brand-600'
+                : 'text-slate-600 hover:bg-slate-50'
+                }`}
+            >
+              <span className="material-symbols-outlined">notifications</span>
+              Notifications
+            </button>
+          </nav>
         </div>
 
-        <div className="p-10 space-y-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Institutional Name</label>
-              <input 
-                type="text" 
-                defaultValue={isStudent ? 'Alex Johnson' : 'Edward Smith'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-6 focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none transition-all font-bold text-sm uppercase tracking-wider"
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Institutional Email</label>
-              <input 
-                type="email" 
-                defaultValue={isStudent ? 'alex.j@university.edu' : 'smith@faculty.edu'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-6 focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none transition-all font-bold text-sm lowercase tracking-wider"
-              />
-            </div>
-          </div>
+        {/* Content Area */}
+        <div className="flex-1">
+          {activeTab === 'profile' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 space-y-8 animate-fade-in">
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-4">Public Profile</h2>
 
-          <div className="space-y-6">
-            <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Security Preferences</h4>
-            <div className="space-y-4">
-              {[
-                { id: '2fa', label: 'Two-Factor Authentication', desc: 'Secure your terminal with biometric handshakes.', default: true },
-                { id: 'data-privacy', label: 'Enhanced Data Privacy', desc: 'Control institutional access to your performance metrics.', default: false }
-              ].map((notif) => (
-                <label key={notif.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-[24px] border border-slate-100 cursor-pointer hover:border-brand-200 transition-all group">
-                  <div className="flex-1">
-                    <p className="text-xs font-black text-slate-900 uppercase tracking-widest">{notif.label}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80 mt-1">{notif.desc}</p>
+              <div className="flex flex-col md:flex-row gap-8 items-start">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-32 h-32 rounded-full p-1 bg-slate-100">
+                    <img
+                      src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`}
+                      alt="Profile"
+                      className="w-full h-full rounded-full object-cover"
+                    />
                   </div>
-                  <div className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" defaultChecked={notif.default} className="sr-only peer" />
-                    <div className="w-12 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500"></div>
+                  <button className="text-xs font-bold text-brand-500 hover:text-brand-600">Change Avatar</button>
+                </div>
+
+                <div className="flex-1 w-full space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Full Name</label>
+                    {isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="flex-1 bg-slate-50 border-b-2 border-brand-500 px-4 py-2 outline-none font-bold text-slate-900"
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleUpdate}
+                          disabled={loading}
+                          className="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setIsEditing(false)}
+                          className="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <span className="font-bold text-slate-900">{displayName}</span>
+                        <button
+                          onClick={() => { setIsEditing(true); setNewName(displayName); }}
+                          className="text-slate-400 hover:text-brand-500 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">edit</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </label>
-              ))}
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Email Address</label>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-500 font-bold flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[18px]">lock</span>
+                      {email}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium">Email address cannot be changed.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Role</label>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-900 font-bold capitalize">
+                      {role === UserRole.STUDENT ? 'Student Account' : 'Instructor Account'}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="pt-6 flex flex-col sm:flex-row gap-6">
-            <button className="flex-1 bg-brand-500 hover:bg-brand-600 text-white font-black py-5 rounded-2xl shadow-2xl shadow-brand-500/20 transition-all active:scale-95 text-[10px] uppercase tracking-widest">
-              Save Institutional Configuration
-            </button>
-            <button className="flex-1 bg-white border border-slate-200 text-slate-700 font-black py-5 rounded-2xl hover:bg-slate-50 transition-all text-[10px] uppercase tracking-widest">
-              Reset System Defaults
-            </button>
-          </div>
-        </div>
-      </section>
+          {activeTab === 'account' && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 space-y-6">
+                <h2 className="text-lg font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-4">Account Actions</h2>
 
-      <section className="bg-red-50/50 rounded-[32px] border border-red-100 p-10 flex flex-col sm:flex-row items-center justify-between gap-8">
-        <div>
-          <h4 className="text-xl font-black text-red-900 uppercase tracking-tight">Danger Zone</h4>
-          <p className="text-[11px] text-red-700/70 font-bold uppercase tracking-widest mt-1">Deactivate your institutional credentials.</p>
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <h3 className="font-bold text-slate-900">Sign Out</h3>
+                    <p className="text-sm text-slate-500">Sign out of your account on this device.</p>
+                  </div>
+                  <button
+                    onClick={signOut}
+                    className="px-6 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-red-50 rounded-2xl border border-red-100 p-8 space-y-6">
+                <h2 className="text-lg font-black text-red-700 uppercase tracking-widest border-b border-red-200 pb-4">Danger Zone</h2>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-red-900">Reset Progress</h3>
+                    <p className="text-sm text-red-700 mt-1">Clear all course progress and exam results. Purchases remain intact.</p>
+                  </div>
+                  <button
+                    onClick={handleResetProgress}
+                    className="px-6 py-2 rounded-xl bg-red-600 text-white font-bold text-sm hover:bg-red-700 transition-colors shadow-lg shadow-red-500/20"
+                  >
+                    Reset Progress
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 space-y-6">
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-4">Notification Preferences</h2>
+              <div className="py-10 text-center text-slate-400 font-medium">
+                No notification settings available yet.
+              </div>
+            </div>
+          )}
         </div>
-        <button className="px-8 py-4 bg-white border border-red-200 text-red-600 font-black rounded-2xl hover:bg-red-600 hover:text-white transition-all shadow-xl text-[10px] uppercase tracking-widest">
-          Deactivate Profile
-        </button>
-      </section>
+      </div>
     </div>
   );
 };

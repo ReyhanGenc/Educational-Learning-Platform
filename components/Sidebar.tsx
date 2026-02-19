@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { UserRole } from '../types';
+import { useAuth } from '../src/contexts/AuthContext';
 
 interface SidebarProps {
   role: UserRole;
@@ -10,7 +11,10 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogout }) => {
+  const { userMetadata } = useAuth();
   const isStudent = role === UserRole.STUDENT;
+
+  const displayName = userMetadata?.full_name || (isStudent ? 'Student' : 'Instructor');
 
   const navItems = isStudent ? [
     { id: 'dashboard', label: 'Home', icon: 'home' },
@@ -35,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogo
           <span className="font-bold text-xl tracking-tight text-slate-900 group-hover:text-brand-500 transition-colors">EduExam</span>
         </div>
       </div>
-      
+
       <nav className="flex-1 px-4 space-y-1.5 mt-2">
         {navItems.map((item) => {
           const isActive = currentPage === item.id;
@@ -43,18 +47,16 @@ const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogo
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center gap-3.5 px-5 py-3.5 rounded-2xl transition-all group relative ${
-                isActive 
-                  ? 'bg-brand-50 text-brand-600 font-bold' 
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
+              className={`w-full flex items-center gap-3.5 px-5 py-3.5 rounded-2xl transition-all group relative ${isActive
+                ? 'bg-brand-50 text-brand-600 font-bold'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                }`}
             >
               {isActive && (
                 <div className="absolute left-0 w-1 h-6 bg-brand-500 rounded-r-full"></div>
               )}
-              <span className={`material-symbols-outlined text-[24px] transition-all ${
-                isActive ? 'text-brand-600 fill-1' : 'text-slate-600 group-hover:text-slate-800'
-              }`}>{item.icon}</span>
+              <span className={`material-symbols-outlined text-[24px] transition-all ${isActive ? 'text-brand-600 fill-1' : 'text-slate-600 group-hover:text-slate-800'
+                }`}>{item.icon}</span>
               <span className="text-[15px]">{item.label}</span>
             </button>
           );
@@ -65,15 +67,15 @@ const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogo
         <div className="bg-slate-100 rounded-2xl p-4 mb-5 border border-slate-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-brand-100 overflow-hidden shrink-0 border-2 border-white shadow-sm ring-2 ring-brand-500/5">
-              <img 
-                alt="Profile" 
-                className="w-full h-full object-cover" 
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${isStudent ? 'Alex' : 'Instructor'}`} 
+              <img
+                alt="Profile"
+                className="w-full h-full object-cover"
+                src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`}
               />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-slate-900 truncate">
-                {isStudent ? 'Alex Johnson' : 'Prof. Smith'}
+                {displayName}
               </p>
               <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest truncate">
                 {isStudent ? 'UG Student' : 'Senior Faculty'}
@@ -81,8 +83,8 @@ const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogo
             </div>
           </div>
         </div>
-        
-        <button 
+
+        <button
           onClick={onLogout}
           className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl border border-red-100 bg-red-50/30 text-red-600 font-bold text-sm hover:bg-red-50 hover:border-red-200 transition-all active:scale-[0.98]"
         >

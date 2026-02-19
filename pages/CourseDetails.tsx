@@ -1,28 +1,89 @@
 
-import React from 'react';
-
-import { Course } from '../types';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../src/lib/supabase';
+import { Course, Chapter, Lesson } from '../types';
 
 interface CourseDetailsProps {
   onBack: () => void;
-  onStartLesson: () => void;
+  onStartLesson: (lessonId?: string) => void;
   course?: Course;
   previewMode?: boolean;
 }
 
 const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, course, previewMode = false }) => {
-  const syllabus = [
-    { title: 'Foundations of Vector Calculus', duration: '45m', status: 'Completed', id: '1' },
-    { title: 'Linear Transformations & Matrices', duration: '1h 12m', status: 'Current', id: '2' },
-    { title: 'Eigenvalues and Eigenvectors', duration: '55m', status: 'Locked', id: '3' },
-    { title: 'Complex Vector Spaces', duration: '1h 30m', status: 'Locked', id: '4' },
-    { title: 'Differential Geometry Intro', duration: '50m', status: 'Locked', id: '5' },
-  ];
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const displaySyllabus = previewMode ? syllabus.map((item, index) => ({
-    ...item,
-    status: index === 0 ? item.status : 'Locked'
-  })) : syllabus;
+  useEffect(() => {
+    if (course?.id) {
+      fetchCurriculum();
+    }
+  }, [course?.id]);
+
+  const fetchCurriculum = async () => {
+    try {
+      setLoading(true);
+      const { data } = await supabase
+        .from('chapters')
+        .select(`*, lessons(*)`)
+        .eq('course_id', course?.id)
+        .order('order');
+
+      if (data) {
+        // Sort lessons
+        const sorted = data.map((ch: any) => ({
+          ...ch,
+          lessons: ch.lessons.sort((a: any, b: any) => a.order - b.order)
+        }));
+        setChapters(sorted);
+      }
+    } catch (error) {
+      console.error('Error fetching curriculum:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Determine status for each lesson
+  // Logic: 
+  // 1. First lesson of first chapter is ALWAYS Open.
+  // 2. A lesson is OPEN if the PREVIOUS lesson is COMPLETED.
+  // 3. A lesson is COMPLETED if progress >= 95% (Scroll + Exam).
+
+  // Flatten lessons to find "previous" easily
+  const allLessons = chapters.flatMap(ch => ch.lessons);
+
+  const getLessonStatus = (lessonId: string) => {
+    if (previewMode) return { status: 'Locked', icon: 'lock', color: 'slate' };
+
+    // Check granular progress
+    const progress = course?.lesson_progress?.[lessonId];
+    const scrollScore = Math.round((progress?.scroll_percent || 0) / 2);
+    const examScore = (progress?.quiz_score || 0) >= 50 ? 50 : 0;
+    const totalScore = scrollScore + examScore;
+
+    // If Completed
+    if (totalScore >= 95) {
+      return { status: 'Completed', icon: 'check_circle', color: 'emerald' };
+    }
+
+    // Check Locking
+    const index = allLessons.findIndex(l => l.id === lessonId);
+    if (index === 0) {
+      return { status: 'Open', icon: 'play_arrow', color: 'brand' }; // First lesson always open
+    }
+
+    // Check previous lesson status
+    const prevLesson = allLessons[index - 1];
+    const prevProgress = course?.lesson_progress?.[prevLesson.id];
+    const prevTotal = Math.round((prevProgress?.scroll_percent || 0) / 2) + ((prevProgress?.quiz_score || 0) >= 50 ? 50 : 0);
+
+    if (prevTotal >= 95) {
+      return { status: 'Open', icon: 'play_arrow', color: 'brand' };
+    }
+
+    return { status: 'Locked', icon: 'lock', color: 'slate' };
+  };
 
   return (
     <div className="min-h-full bg-slate-100 flex flex-col pb-24 lg:pb-10 text-slate-900">
@@ -30,9 +91,9 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="material-symbols-outlined p-2 hover:bg-slate-100 rounded-xl transition-all text-slate-900 font-bold">arrow_back</button>
           <div>
-            <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase leading-none">{course?.title || 'Advanced Calculus II'}</h1>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase leading-none">{course?.title || 'Course Details'}</h1>
             <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mt-1">
-              {course?.category || 'Mathematics'} • {course?.instructor || 'Dr. Sarah Jenkins'}
+              {course?.category || 'General'} • {course?.instructor || 'Instructor'}
               {previewMode && <span className="ml-2 px-2 py-0.5 bg-brand-100 text-brand-600 rounded-md">PREVIEW MODE</span>}
             </p>
           </div>
@@ -49,17 +110,14 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
       <main className="p-6 lg:p-10 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-10">
         <div className="lg:col-span-2 space-y-10">
           <section className="bg-white p-12 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Institutional Syllabus</h2>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">About Course</h2>
             <p className="text-base text-slate-700 leading-relaxed font-bold">
-              {previewMode ?
-                "This preview gives you access to the first chapter of the course. Unlock the full course to access all modules, resources, and certification." :
-                "This course explores the advanced mechanics of vector calculus within the context of linear transformations. Students will develop a deep theoretical understanding of multidimensional spaces, focusing on differential forms, Stokes' theorem, and applications in theoretical physics."
-              }
+              {course?.description || "No description available."}
             </p>
             <div className="flex flex-wrap gap-4 pt-4">
               <div className="bg-brand-50 border border-brand-200 px-6 py-4 rounded-2xl flex flex-col">
-                <span className="text-[9px] font-black text-brand-600 uppercase tracking-widest">Difficulty</span>
-                <span className="text-xs font-black text-brand-700 uppercase tracking-widest mt-0.5">Advanced</span>
+                <span className="text-[9px] font-black text-brand-600 uppercase tracking-widest">Level</span>
+                <span className="text-xs font-black text-brand-700 uppercase tracking-widest mt-0.5">{course?.level || 'All Levels'}</span>
               </div>
             </div>
           </section>
@@ -67,76 +125,60 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
           <section className="space-y-6">
             <div className="flex justify-between items-center px-2">
               <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Curriculum {previewMode && '(Preview)'}</h2>
-              <span className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em]">{previewMode ? '1 Chapter Available' : '5 Modules • 12.5 Total Hours'}</span>
             </div>
-            <div className="space-y-4">
-              {displaySyllabus.map((lesson) => (
-                <div
-                  key={lesson.id}
-                  onClick={lesson.status !== 'Locked' ? onStartLesson : undefined}
-                  className={`p-8 bg-white rounded-[24px] border border-slate-200 shadow-sm flex items-center justify-between transition-all group ${lesson.status === 'Locked' ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-brand-500 cursor-pointer hover:shadow-xl'
-                    }`}
-                >
-                  <div className="flex items-center gap-6">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border ${lesson.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                      lesson.status === 'Current' ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30 border-brand-500' :
-                        'bg-slate-100 text-slate-500 border-slate-200'
-                      }`}>
-                      <span className="material-symbols-outlined text-2xl font-bold">
-                        {lesson.status === 'Completed' ? 'check' : lesson.status === 'Current' ? 'play_arrow' : 'lock'}
-                      </span>
-                    </div>
-                    <div>
-                      <h4 className="text-base font-black text-slate-900 tracking-tight uppercase group-hover:text-brand-500 transition-colors">{lesson.title}</h4>
-                      <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-1">Duration: {lesson.duration} • Theoretical Unit</p>
-                    </div>
+
+            {loading ? (
+              <div className="p-10 text-center font-bold text-slate-400">Loading Curriculum...</div>
+            ) : (
+              <div className="space-y-8">
+                {chapters.map((chapter) => (
+                  <div key={chapter.id} className="space-y-4">
+                    <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest px-2">{chapter.title}</h4>
+                    {chapter.lessons?.map((lesson) => {
+                      const { status, icon, color } = getLessonStatus(lesson.id);
+                      const isLocked = status === 'Locked';
+                      return (
+                        <div
+                          key={lesson.id}
+                          onClick={() => {
+                            if (!previewMode && !isLocked) onStartLesson(lesson.id);
+                            if (isLocked) alert('Complete the previous lesson to unlock this one!');
+                          }}
+                          className={`p-8 bg-white rounded-[24px] border border-slate-200 shadow-sm flex items-center justify-between transition-all group 
+                            ${isLocked ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-brand-500 cursor-pointer hover:shadow-xl'}
+                          `}
+                        >
+                          <div className="flex items-center gap-6">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border 
+                                        ${status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                isLocked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
+                                    `}>
+                              <span className="material-symbols-outlined text-2xl font-bold">{icon}</span>
+                            </div>
+                            <div>
+                              <h4 className={`text-base font-black tracking-tight uppercase transition-colors ${isLocked ? 'text-slate-500' : 'text-slate-900 group-hover:text-brand-500'}`}>{lesson.title}</h4>
+                              <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-1">Duration: {lesson.duration || '20m'}</p>
+                            </div>
+                          </div>
+                          {!isLocked && <span className="material-symbols-outlined text-slate-500 group-hover:text-brand-500 transition-colors font-bold">arrow_forward_ios</span>}
+                          {isLocked && <span className="material-symbols-outlined text-slate-300 font-bold">lock</span>}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <span className="material-symbols-outlined text-slate-500 group-hover:text-brand-500 transition-colors font-bold">arrow_forward_ios</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
 
         <div className="space-y-10">
           <div className="bg-slate-900 rounded-[32px] p-10 text-white shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/20 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-            <div className="relative z-10 space-y-8">
-              <div>
-                <h3 className="text-xl font-black tracking-tight uppercase">Performance Goal</h3>
-                <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1 font-bold">Institutional Benchmark</p>
-              </div>
-              {!previewMode && (
-                <div className="flex flex-col items-center justify-center py-6">
-                  <div className="text-5xl font-black tracking-tighter">88%</div>
-                  <div className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.3em] mt-2">Predicted Mastery</div>
-                </div>
-              )}
-              {!previewMode && (
-                <div className="h-4"></div>
-              )}
+            {/* Stats Placeholder */}
+            <div className="relative z-10">
+              <h3 className="text-xl font-black tracking-tight uppercase mb-4">Your Progress</h3>
+              <div className="text-4xl font-black tracking-tighter">{course?.progress || 0}%</div>
             </div>
-          </div>
-
-          <div className="bg-white rounded-[32px] p-10 border border-slate-200 shadow-sm space-y-8">
-            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Resources</h3>
-            {previewMode ? (
-              <div className="flex flex-col items-center justify-center py-10 opacity-50">
-                <span className="material-symbols-outlined text-4xl text-slate-400 mb-2">lock</span>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Resources Locked</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {['Lecture Notes.pdf', 'Cheat Sheet.pdf', 'Exercise Lab.zip'].map((res, i) => (
-                  <div key={i} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-200 group transition-all">
-                    <div className="flex items-center gap-4">
-                      <span className="material-symbols-outlined text-slate-600 font-bold">description</span>
-                      <span className="text-xs font-black text-slate-800 uppercase tracking-widest">{res}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </main>
