@@ -15,6 +15,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onLogin(selectedRole, email, password, rememberMe);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative">
       <div className="absolute top-6 left-6 z-20">
@@ -39,6 +44,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
         <div className="w-full bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 p-8">
           <div className="flex h-12 items-center justify-center rounded-xl bg-slate-100 p-1 mb-8">
             <button
+              type="button"
               onClick={() => setSelectedRole(UserRole.STUDENT)}
               className={`flex-1 h-full rounded-lg text-sm font-semibold transition-all ${selectedRole === UserRole.STUDENT
                 ? 'bg-white text-brand-500 shadow-sm'
@@ -48,6 +54,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
               Student
             </button>
             <button
+              type="button"
               onClick={() => setSelectedRole(UserRole.INSTRUCTOR)}
               className={`flex-1 h-full rounded-lg text-sm font-semibold transition-all ${selectedRole === UserRole.INSTRUCTOR
                 ? 'bg-white text-brand-500 shadow-sm'
@@ -60,66 +67,71 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, onBack }) => {
 
           <h2 className="text-slate-900 text-xl font-bold mb-6">Sign In</h2>
 
-          <div className="space-y-5">
-            <div className="flex flex-col gap-2">
-              <label className="text-slate-600 text-xs font-bold uppercase tracking-widest">Email Address</label>
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">mail</span>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl py-3.5 pl-11 pr-4 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
-                  type="email"
-                  placeholder="name@example.com"
-                />
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-slate-600 text-xs font-bold uppercase tracking-widest">Email Address</label>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">mail</span>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl py-3.5 pl-11 pr-4 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                    type="email"
+                    placeholder="name@example.com"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-slate-600 text-xs font-bold uppercase tracking-widest">Password</label>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">lock</span>
+                  <input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl py-3.5 pl-11 pr-11 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <span className="material-symbols-outlined text-xl">
+                      {showPassword ? 'visibility_off' : 'visibility'}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-slate-600 text-xs font-bold uppercase tracking-widest">Password</label>
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">lock</span>
+            <div className="flex items-center justify-between mt-6 mb-8">
+              <label className="flex items-center cursor-pointer group">
                 <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl py-3.5 pl-11 pr-11 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-5 h-5 rounded border-slate-300 text-brand-500 focus:ring-brand-500 transition-all"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <span className="material-symbols-outlined text-xl">
-                    {showPassword ? 'visibility_off' : 'visibility'}
-                  </span>
-                </button>
-              </div>
+                <span className="ml-2 text-sm text-slate-600">Remember me</span>
+              </label>
+              <button type="button" className="text-sm text-brand-500 font-semibold hover:underline">Forgot password?</button>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between mt-6 mb-8">
-            <label className="flex items-center cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-5 h-5 rounded border-slate-300 text-brand-500 focus:ring-brand-500 transition-all"
-              />
-              <span className="ml-2 text-sm text-slate-600">Remember me</span>
-            </label>
-            <button className="text-sm text-brand-500 font-semibold hover:underline">Forgot password?</button>
-          </div>
-
-          <button
-            onClick={() => onLogin(selectedRole, email, password, rememberMe)}
-            className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-brand-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-          >
-            Sign In
-            <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
-          </button>
+            <button
+              type="submit"
+              className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-brand-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              Sign In
+              <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+            </button>
+          </form>
         </div>
+
 
         <p className="mt-8 text-center text-slate-500 text-sm">
           Don't have an account? <button onClick={onRegister} className="text-brand-500 font-bold hover:underline">Sign up for free</button>

@@ -1,6 +1,7 @@
 
-import React from 'react';
-import { UserRole } from '../types';
+import React, { useState, useEffect } from 'react';
+import { UserRole, Exam } from '../types';
+import { supabase } from '../src/lib/supabase';
 
 interface ExamListProps {
   role: UserRole;
@@ -8,13 +9,47 @@ interface ExamListProps {
   onViewResults: (id: string) => void;
 }
 
+export const mockExams = [
+  { id: '1', title: 'Advanced Calculus Final Assessment', subject: 'Mathematics', duration: 120, questions: 45, dateTime: 'Dec 12 • 09:00 AM', status: 'Priority', color: 'brand' },
+  { id: '2', title: 'Introduction to Behavioral Science', subject: 'Psychology', duration: 90, questions: 60, dateTime: 'Dec 14 • 01:30 PM', status: 'Upcoming', color: 'purple' },
+  { id: '3', title: 'Organic Chemistry Mid-Term Exam', subject: 'Chemistry', duration: 60, questions: 30, dateTime: 'Dec 15 • 10:00 AM', status: 'Upcoming', color: 'teal' },
+  { id: '4', title: 'World War II Global Impact Studies', subject: 'History', duration: 100, questions: 50, dateTime: 'Dec 18 • 03:00 PM', status: 'Upcoming', color: 'orange' },
+];
+
 const ExamList: React.FC<ExamListProps> = ({ role, onTakeExam, onViewResults }) => {
-  const exams = [
-    { id: '1', title: 'Advanced Calculus Final Assessment', subject: 'Mathematics', duration: 120, questions: 45, dateTime: 'Dec 12 • 09:00 AM', status: 'Priority', color: 'brand' },
-    { id: '2', title: 'Introduction to Behavioral Science', subject: 'Psychology', duration: 90, questions: 60, dateTime: 'Dec 14 • 01:30 PM', status: 'Upcoming', color: 'purple' },
-    { id: '3', title: 'Organic Chemistry Mid-Term Exam', subject: 'Chemistry', duration: 60, questions: 30, dateTime: 'Dec 15 • 10:00 AM', status: 'Upcoming', color: 'teal' },
-    { id: '4', title: 'World War II Global Impact Studies', subject: 'History', duration: 100, questions: 50, dateTime: 'Dec 18 • 03:00 PM', status: 'Upcoming', color: 'orange' },
-  ];
+  const [exams, setExams] = useState<Exam[]>(mockExams as any); // Fallback until loaded
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchExams = async () => {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+
+        // Map snake_case to camelCase
+        if (data && data.length > 0) {
+          const formatted = data.map(d => ({
+            id: d.id,
+            title: d.title,
+            subject: d.subject,
+            duration: d.duration,
+            questions: d.questions,
+            dateTime: d.date_time,
+            priority: d.status,
+            status: d.status,
+            color: d.color
+          }));
+          setExams(formatted as any);
+        }
+      } catch (err) {
+        console.error('Error fetching exams:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchExams();
+  }, []);
 
   const getColors = (c: string) => {
     switch (c) {
@@ -66,7 +101,7 @@ const ExamList: React.FC<ExamListProps> = ({ role, onTakeExam, onViewResults }) 
                 <div className="grid grid-cols-2 gap-4 mb-10">
                   <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col gap-1">
                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Duration</span>
-                    <span className="text-sm font-black text-slate-800">{exam.duration} Min</span>
+                    <span className="text-sm font-black text-slate-800">{exam.questions * 2} Min</span>
                   </div>
                   <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col gap-1">
                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Questions</span>

@@ -11,8 +11,29 @@ export interface Exam {
   duration: number;
   questions: number;
   dateTime: string;
-  priority: 'High' | 'Normal';
+  status: string;
   color: string;
+}
+
+export interface ExamQuestion {
+  id: string;
+  exam_id: string;
+  question_text: string;
+  options: { id: string; label: string }[];
+  correct_option_id: string;
+  order_num: number;
+}
+
+export interface ExamResult {
+  id: string;
+  user_id: string;
+  exam_id: string;
+  score: number;
+  total_questions: number;
+  correct_answers: number;
+  incorrect_answers: number;
+  time_spent_seconds: number;
+  created_at: string;
 }
 
 export interface Course {

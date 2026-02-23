@@ -1,25 +1,127 @@
 
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../src/lib/supabase';
+import { useAuth } from '../src/contexts/AuthContext';
+import { ExamQuestion, Exam } from '../types';
 
 interface ExamTakerProps {
   onExit: () => void;
-  onSubmit?: () => void;
+  onSubmit?: (resultId?: string) => void;
   onComplete?: (score: number) => void;
+  examId?: string | null;
   examData?: any;
 }
 
-const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, examData }) => {
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, examId, examData }) => {
+  const { user } = useAuth();
   const [timeLeft, setTimeLeft] = useState(examData?.duration ? examData.duration * 60 : 3600);
+  const [initialDuration, setInitialDuration] = useState(examData?.duration ? examData.duration * 60 : 3600);
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const totalQuestions = 5; // Simplified for unit exam
+  const [questions, setQuestions] = useState<ExamQuestion[]>([]);
+  const [exam, setExam] = useState<Exam | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(!!examId);
+
+  const selectedOption = answers[currentQuestion] || null;
+
+  const totalQuestions = examId ? Math.max(questions.length, 1) : (examData?.questions ? (typeof examData.questions === 'number' ? examData.questions : examData.questions.length) : (examData?.totalQuestions || 5));
+
+  useEffect(() => {
+    setCurrentQuestion(1);
+    if (examData?.duration) {
+      setTimeLeft(examData.duration * 60);
+      setInitialDuration(examData.duration * 60);
+    }
+    setAnswers({});
+  }, [examData, examId]);
+
+  useEffect(() => {
+    if (!examId) return;
+    const fetchExamData = async () => {
+      setLoading(true);
+      try {
+        const { data: eData } = await supabase.from('exams').select('*').eq('id', examId).single();
+        if (eData) {
+          setExam(eData as any);
+          const durationSecs = (eData.questions || 10) * 2 * 60;
+          setTimeLeft(durationSecs);
+          setInitialDuration(durationSecs);
+        }
+
+        const { data: qData } = await supabase.from('exam_questions').select('*').eq('exam_id', examId).order('order_num', { ascending: true });
+        if (qData && qData.length > 0) {
+          setQuestions(qData as any);
+        } else if (eData) {
+          // Fallback to generate mock questions if table has no entries for this exam
+          const totalQ = eData.questions || 10;
+          const mockQ = Array.from({ length: totalQ }).map((_, i) => ({
+            id: `mock-${i}`,
+            exam_id: examId,
+            question_text: `The actual content for Question ${i + 1} is missing from the database. Please select the correct generic option provided below.`,
+            options: [
+              { id: 'A', label: 'First Valid Option' },
+              { id: 'B', label: 'Second Option' },
+              { id: 'C', label: 'Third Error Option' },
+              { id: 'D', label: 'Last Option' }
+            ],
+            correct_option_id: 'A',
+            order_num: i + 1
+          }));
+          setQuestions(mockQ);
+        }
+      } catch (err) {
+        console.error('Error fetching exam details:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchExamData();
+  }, [examId]);
 
   // ... (timer logic)
 
-  const handleFinish = () => {
-    // Calculate score (random for demo or 100 for simplicity)
-    const score = 100; // Mock score
+  const handleFinish = async () => {
+    let score = 100;
+
+    if (examId && questions.length > 0 && user) {
+      let correctCount = 0;
+      let incorrectCount = 0;
+      questions.forEach((q, idx) => {
+        const answer = answers[idx + 1];
+        if (answer) {
+          if (answer === q.correct_option_id) {
+            correctCount++;
+          } else {
+            incorrectCount++;
+          }
+        }
+      });
+      score = Math.round((correctCount / questions.length) * 100);
+      const timeSpent = initialDuration - timeLeft;
+
+      try {
+        const { data: resultData, error } = await supabase.from('exam_results').insert({
+          user_id: user.id,
+          exam_id: examId,
+          score,
+          total_questions: questions.length,
+          correct_answers: correctCount,
+          incorrect_answers: incorrectCount,
+          time_spent_seconds: timeSpent
+        }).select().single();
+
+        if (error) throw error;
+
+        if (onSubmit) {
+          onSubmit(resultData.id);
+          return;
+        }
+      } catch (err) {
+        console.error('Error saving exam result:', err);
+      }
+    }
+
     if (onComplete) {
       onComplete(score);
     } else if (onSubmit) {
@@ -48,16 +150,25 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
       setIsModalOpen(true);
     } else {
       setCurrentQuestion(prev => Math.min(totalQuestions, prev + 1));
-      setSelectedOption(null); // Reset selection for next question in demo
     }
   };
 
-  const options = [
+  const handlePrev = () => {
+    setCurrentQuestion(prev => Math.max(1, prev - 1));
+  };
+
+  const currentQData = questions[currentQuestion - 1];
+
+  const demoOptions = [
     { id: 'A', label: 'Power Rule' },
     { id: 'B', label: 'Product Rule' },
     { id: 'C', label: 'Quotient Rule' },
     { id: 'D', label: 'Chain Rule' },
   ];
+
+  const activeOptions = examId && currentQData?.options ? currentQData.options : demoOptions;
+  const questionTitle = examId ? (exam?.title || 'Examination') : 'Adv. Mathematics - Midterm';
+  const questionText = examId && currentQData ? currentQData.question_text : 'A student is calculating the derivative of f(x) = sin(x) * cos(x). Which of the following rules should be applied first to find the correct derivative?';
 
   const progress = (currentQuestion / totalQuestions) * 100;
 
@@ -69,7 +180,7 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
             <button onClick={() => setIsModalOpen(true)} className="material-symbols-outlined text-slate-600 hover:text-slate-900 transition-colors">close</button>
             <div className="hidden lg:block ml-2">
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest block mb-0.5">Examination Mode</span>
-              <h1 className="text-sm font-bold">Adv. Mathematics - Midterm</h1>
+              <h1 className="text-sm font-bold">{questionTitle}</h1>
             </div>
           </div>
           <div className="flex items-center gap-2 bg-red-500/10 px-3 py-1.5 rounded-full border border-red-500/20">
@@ -88,92 +199,101 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden lg:px-8">
-        <main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
-          <div className="max-w-3xl mx-auto space-y-8">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <span className="text-brand-500 text-xs font-bold uppercase tracking-widest">Question {currentQuestion} of {totalQuestions}</span>
-                <h2 className="text-2xl lg:text-3xl font-bold leading-tight text-slate-900 uppercase">
-                  Derivative calculation for trigonometric functions
-                </h2>
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
+        </div>
+      ) : (
+        <div className="flex flex-1 overflow-hidden lg:px-8">
+          <main className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
+            <div className="max-w-3xl mx-auto space-y-8">
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-brand-500 text-xs font-bold uppercase tracking-widest">Question {currentQuestion} of {totalQuestions}</span>
+                  <h2 className="text-2xl lg:text-3xl font-bold leading-tight text-slate-900 uppercase">
+                    {examId ? `Question ${currentQuestion}` : 'Derivative calculation for trigonometric functions'}
+                  </h2>
+                </div>
+                <button className="p-2 rounded-full hover:bg-slate-100 text-slate-500">
+                  <span className="material-symbols-outlined">bookmark</span>
+                </button>
               </div>
-              <button className="p-2 rounded-full hover:bg-slate-100 text-slate-500">
-                <span className="material-symbols-outlined">bookmark</span>
+
+              <div className="text-slate-700 text-lg leading-relaxed font-medium">
+                <p>{questionText}</p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {activeOptions.map((opt: any) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setAnswers(prev => ({ ...prev, [currentQuestion]: opt.id }))}
+                    className={`group flex items-center gap-4 rounded-2xl border-2 p-6 transition-all text-left ${selectedOption === opt.id
+                      ? 'border-brand-500 bg-brand-50'
+                      : 'border-slate-100 hover:border-slate-200 bg-white'
+                      }`}
+                  >
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-bold text-sm ${selectedOption === opt.id ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-200 text-slate-500'
+                      }`}>
+                      {opt.id}
+                    </div>
+                    <div className="flex grow font-black text-xs uppercase tracking-widest text-slate-800">{opt.label}</div>
+                    {selectedOption === opt.id && <span className="material-symbols-outlined text-brand-500">check_circle</span>}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  disabled={currentQuestion === 1}
+                  onClick={handlePrev}
+                  className="flex-1 flex items-center justify-center gap-2 py-5 rounded-2xl border border-slate-200 font-black text-[10px] uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-lg">arrow_back</span>
+                  Previous
+                </button>
+                <button
+                  onClick={handleNext}
+                  className="flex-1 flex items-center justify-center gap-2 py-5 rounded-2xl bg-brand-500 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:bg-brand-600 transition-colors"
+                >
+                  {currentQuestion === totalQuestions ? 'Finish' : 'Next'}
+                  <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                </button>
+              </div>
+            </div>
+          </main>
+
+          <aside className="hidden xl:flex flex-col w-80 border-l border-slate-100 bg-white h-full relative">
+            <div className="p-8 pb-4 border-b border-slate-100">
+              <h3 className="text-lg font-black uppercase tracking-tight text-slate-900">Question Index</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+              <div className="grid grid-cols-5 gap-2">
+                {[...Array(totalQuestions)].map((_, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setCurrentQuestion(i + 1)}
+                    className={`aspect-square flex items-center justify-center rounded-xl font-bold text-xs cursor-pointer transition-all ${i + 1 < currentQuestion ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' :
+                      i + 1 === currentQuestion ? 'border-2 border-brand-500 bg-brand-50 text-brand-500' :
+                        'border border-slate-200 text-slate-600 hover:border-slate-400'
+                      }`}
+                  >
+                    {i + 1}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-8 pt-4 border-t border-slate-100 bg-white">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all active:scale-95"
+              >
+                Submit Exam
               </button>
             </div>
-
-            <div className="text-slate-700 text-lg leading-relaxed font-medium">
-              <p>
-                A student is calculating the derivative of <code className="bg-slate-100 px-2 py-0.5 rounded font-mono">f(x) = sin(x) * cos(x)</code>. Which of the following rules should be applied first to find the correct derivative?
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {options.map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => setSelectedOption(opt.id)}
-                  className={`group flex items-center gap-4 rounded-2xl border-2 p-6 transition-all text-left ${selectedOption === opt.id
-                    ? 'border-brand-500 bg-brand-50'
-                    : 'border-slate-100 hover:border-slate-200 bg-white'
-                    }`}
-                >
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-bold text-sm ${selectedOption === opt.id ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-200 text-slate-500'
-                    }`}>
-                    {opt.id}
-                  </div>
-                  <div className="flex grow font-black text-xs uppercase tracking-widest text-slate-800">{opt.label}</div>
-                  {selectedOption === opt.id && <span className="material-symbols-outlined text-brand-500">check_circle</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        </main>
-
-        <aside className="hidden xl:block w-80 p-8 border-l border-slate-100 bg-white">
-          <h3 className="text-lg font-black mb-6 uppercase tracking-tight text-slate-900">Question Index</h3>
-          <div className="grid grid-cols-5 gap-2">
-            {[...Array(25)].map((_, i) => (
-              <div
-                key={i}
-                className={`aspect-square flex items-center justify-center rounded-xl font-bold text-xs cursor-pointer transition-all ${i + 1 < currentQuestion ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' :
-                  i + 1 === currentQuestion ? 'border-2 border-brand-500 bg-brand-50 text-brand-500' :
-                    'border border-slate-200 text-slate-600 hover:border-slate-400'
-                  }`}
-              >
-                {i + 1}
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="w-full mt-10 bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all active:scale-95"
-          >
-            Submit Exam
-          </button>
-        </aside>
-      </div>
-
-      <footer className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 p-4 pb-8 lg:pb-4 z-40">
-        <div className="max-w-3xl mx-auto flex gap-4">
-          <button
-            disabled={currentQuestion === 1}
-            onClick={() => setCurrentQuestion(prev => Math.max(1, prev - 1))}
-            className="flex-1 flex items-center justify-center gap-2 py-5 rounded-2xl border border-slate-200 font-black text-[10px] uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-lg">arrow_back</span>
-            Previous
-          </button>
-          <button
-            onClick={handleNext}
-            className="flex-1 flex items-center justify-center gap-2 py-5 rounded-2xl bg-brand-500 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:bg-brand-600 transition-colors"
-          >
-            {currentQuestion === totalQuestions ? 'Finish' : 'Next'}
-            <span className="material-symbols-outlined text-lg">arrow_forward</span>
-          </button>
+          </aside>
         </div>
-      </footer>
+      )}
 
       {/* Confirmation Modal */}
       {isModalOpen && (
