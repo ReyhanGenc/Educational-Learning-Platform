@@ -39,7 +39,7 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
             query = query.order('created_at', { ascending: false }).limit(1);
           }
 
-          const { data: rData } = await query.single();
+          const { data: rData } = await query.maybeSingle();
 
           if (rData) {
             console.log('ResultView successfully fetched rData:', rData);
@@ -83,6 +83,23 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
     { label: 'Time Spent', value: timeSpentStr, icon: 'timer', color: 'indigo' },
     { label: 'Accuracy', value: `${accuracy}%`, icon: 'check_circle', color: 'emerald' },
   ];
+
+  if (!loading && !result) {
+    return (
+      <div className="min-h-full bg-slate-100 flex flex-col items-center justify-center p-8 animate-fade-in text-slate-900">
+        <div className="bg-white p-12 rounded-[32px] shadow-xl border border-slate-200 text-center max-w-lg">
+          <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-4xl block">history_toggle_off</span>
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase mb-4">Assessment Not Yet Completed</h2>
+          <p className="text-slate-500 font-medium mb-8">There is no attempt record for this exam yet. Once you complete the assessment, you can review your results here.</p>
+          <button onClick={onBack} className="bg-brand-500 text-white font-black text-[10px] uppercase tracking-widest px-8 py-4 rounded-xl shadow-lg shadow-brand-500/20 hover:bg-brand-600 transition-all">
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-slate-100 flex flex-col pb-24 lg:pb-10 animate-fade-in text-slate-900">

@@ -412,7 +412,7 @@ const AppContent: React.FC = () => {
 
   // Handle Exam Mode specifically (no sidebar/nav)
   if (currentPage === 'exam-taker') {
-    return <ExamTaker onExit={() => setCurrentPage('exams')} onSubmit={(resultId) => { setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} examId={activeExamId} />;
+    return <ExamTaker onExit={() => setCurrentPage('exams')} onSubmit={(resultId) => { setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} examId={activeExamId} resultId={activeResultId} />;
   }
 
   const renderPage = () => {
@@ -458,7 +458,7 @@ const AppContent: React.FC = () => {
           }}
         />;
       case 'exams':
-        return <ExamList role={role!} onTakeExam={(id: string) => { setActiveExamId(id); setCurrentPage('exam-taker'); }} onViewResults={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} />;
+        return <ExamList role={role!} onTakeExam={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-taker'); }} onViewResults={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} />;
       case 'exam-result':
         return <ResultView onBack={() => setCurrentPage('exams')} examId={activeExamId} resultId={activeResultId} />;
       case 'analysis':

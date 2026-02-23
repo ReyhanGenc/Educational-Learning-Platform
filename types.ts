@@ -33,6 +33,7 @@ export interface ExamResult {
   correct_answers: number;
   incorrect_answers: number;
   time_spent_seconds: number;
+  answers: Record<number, string>;
   created_at: string;
 }
 
