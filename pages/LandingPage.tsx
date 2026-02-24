@@ -6,15 +6,36 @@ interface LandingPageProps {
   onRegister: () => void;
   onPricing: () => void;
   onViewLessons?: () => void;
-  onSelectLesson?: (id: string) => void;
+  onSelectLesson?: (courseId: string, lessonId: string) => void;
+  featuredLessons?: any[];
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onStart, onRegister, onPricing, onViewLessons, onSelectLesson }) => {
-  const featuredLessons = [
-    { id: '1', title: 'Vector Space Foundations', category: 'Math', image: 'https://picsum.photos/seed/math-hero/600/400', desc: 'A geometric deep-dive into linear combinations.' },
-    { id: '2', title: 'CRISPR & Gene Editing', category: 'Biology', image: 'https://picsum.photos/seed/bio-hero/600/400', desc: 'Understanding the future of molecular genetics.' },
-    { id: '3', title: 'A* Pathfinding Logic', category: 'CS', image: 'https://picsum.photos/seed/cs-hero/600/400', desc: 'Heuristics and search space optimization.' },
-  ];
+const LandingPage: React.FC<LandingPageProps> = ({
+  onStart,
+  onRegister,
+  onPricing,
+  onViewLessons,
+  onSelectLesson,
+  featuredLessons = []
+}) => {
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const container = scrollRef.current;
+      const card = container.firstElementChild as HTMLElement;
+      if (card) {
+        const cardWidth = card.offsetWidth;
+        const gap = 32; // gap-8 is 32px
+        const scrollStep = (cardWidth + gap) * 3;
+
+        container.scrollBy({
+          left: direction === 'left' ? -scrollStep : scrollStep,
+          behavior: 'smooth'
+        });
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 selection:bg-brand-100 selection:text-brand-700 overflow-x-hidden">
@@ -97,7 +118,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onRegister, onPricin
       </section>
 
       {/* Featured Lesson Explanations Section */}
-      <section id="lessons" className="py-24 px-4 bg-white border-y border-slate-100">
+      <section id="lessons" className="py-24 px-4 bg-white border-y border-slate-100 overflow-hidden">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
             <div className="space-y-4 max-w-2xl">
@@ -108,39 +129,63 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onRegister, onPricin
                 Our immersive Lesson Explanations break down advanced institutional concepts into visual, interactive deep-dives.
               </p>
             </div>
-            <button
-              onClick={onViewLessons}
-              className="px-8 py-4 bg-brand-50 text-brand-600 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] hover:bg-brand-500 hover:text-white transition-all shadow-sm active:scale-95"
-            >
-              Explore All Explanations
-            </button>
+            <div className="flex items-center gap-4">
+              <div className="flex gap-2 mr-4">
+                <button
+                  onClick={() => scroll('left')}
+                  className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-brand-500 hover:text-white hover:border-brand-500 transition-all shadow-sm active:scale-90"
+                >
+                  <span className="material-symbols-outlined">chevron_left</span>
+                </button>
+                <button
+                  onClick={() => scroll('right')}
+                  className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-brand-500 hover:text-white hover:border-brand-500 transition-all shadow-sm active:scale-90"
+                >
+                  <span className="material-symbols-outlined">chevron_right</span>
+                </button>
+              </div>
+              <button
+                onClick={onViewLessons}
+                className="px-8 py-4 bg-brand-50 text-brand-600 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] hover:bg-brand-500 hover:text-white transition-all shadow-sm active:scale-95 whitespace-nowrap"
+              >
+                Explore All
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+          <div
+            ref={scrollRef}
+            className="flex gap-8 overflow-x-auto pb-12 no-scrollbar snap-x snap-mandatory px-4"
+            style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}
+          >
             {featuredLessons.map((lesson, i) => (
               <div
                 key={i}
-                className="group relative bg-slate-50 rounded-[40px] overflow-hidden border border-slate-100 hover:border-brand-500 transition-all cursor-pointer hover:shadow-2xl"
-                onClick={() => onSelectLesson?.(lesson.id)}
+                className="min-w-[280px] md:min-w-[380px] snap-start"
               >
-                <div className="aspect-[4/3] overflow-hidden relative">
-                  <img src={lesson.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={lesson.title} />
-                  <div className="absolute top-6 left-6">
-                    <span className="bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-900 shadow-sm">
-                      {lesson.category}
-                    </span>
+                <div
+                  className="group relative bg-slate-50 rounded-[40px] overflow-hidden border border-slate-100 hover:border-brand-500 transition-all cursor-pointer hover:shadow-2xl h-full"
+                  onClick={() => onSelectLesson?.(lesson.courseId, lesson.id)}
+                >
+                  <div className="aspect-[4/3] overflow-hidden relative">
+                    <img src={lesson.image || `https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&q=80`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={lesson.title} />
+                    <div className="absolute top-6 left-6">
+                      <span className="bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-900 shadow-sm">
+                        {lesson.category} • {lesson.courseTitle}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="p-8 space-y-3">
-                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight group-hover:text-brand-500 transition-colors">
-                    {lesson.title}
-                  </h3>
-                  <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                    {lesson.desc}
-                  </p>
-                  <div className="pt-4 flex items-center text-brand-500 gap-2 text-[10px] font-black uppercase tracking-widest">
-                    <span>Start Learning</span>
-                    <span className="material-symbols-outlined text-sm font-bold group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                  <div className="p-8 space-y-3">
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight group-hover:text-brand-500 transition-colors line-clamp-1">
+                      {lesson.title}
+                    </h3>
+                    <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                      Course: {lesson.courseTitle}
+                    </p>
+                    <div className="pt-4 flex items-center text-brand-500 gap-2 text-[10px] font-black uppercase tracking-widest">
+                      <span>Start Learning</span>
+                      <span className="material-symbols-outlined text-sm font-bold group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -228,6 +273,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onRegister, onPricin
         }
         .animate-bounce-subtle {
           animation: bounce-subtle 3s infinite ease-in-out;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
         }
       `}</style>
     </div>

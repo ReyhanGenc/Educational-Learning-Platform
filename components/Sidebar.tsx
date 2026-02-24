@@ -20,6 +20,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogo
     { id: 'dashboard', label: 'Home', icon: 'home' },
     { id: 'content', label: 'Courses', icon: 'auto_stories' },
     { id: 'exams', label: 'Exams', icon: 'quiz' },
+    { id: 'lessons-list', label: 'Lessons', icon: 'menu_book' },
     { id: 'analysis', label: 'Analysis', icon: 'analytics' },
     { id: 'settings', label: 'Settings', icon: 'settings' },
   ] : [

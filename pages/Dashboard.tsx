@@ -1,38 +1,40 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserRole } from '../types';
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
+import { supabase } from '../src/lib/supabase';
+import { useAuth } from '../src/contexts/AuthContext';
 
 interface DashboardProps {
   role: UserRole;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, courseId?: string, lessonId?: string) => void;
   cartCount?: number;
   onOpenCart?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, onOpenCart }) => {
+  const { user, userMetadata } = useAuth();
   const isStudent = role === UserRole.STUDENT;
 
-  // Student Mock Data
-  const studentChartData = [
-    { subject: 'Math', score: 85, fullMark: 100 },
-    { subject: 'History', score: 65, fullMark: 100 },
-    { subject: 'Science', score: 92, fullMark: 100 },
-    { subject: 'Logic', score: 88, fullMark: 100 },
-    { subject: 'Art', score: 70, fullMark: 100 },
+  // Real Data State
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    activeCourses: 0,
+    lessonsPassed: 0,
+    avgGpa: 0,
+    examsPassed: 0
+  });
+  const [activityData, setActivityData] = useState<any[]>([]);
+  const [radarData, setRadarData] = useState<any[]>([]);
+  const [recentLessons, setRecentLessons] = useState<any[]>([]);
+
+  const classMetrics = [
+    { label: 'Total Students', value: '1,284', icon: 'groups', color: 'indigo' },
+    { label: 'Avg. Class Grade', value: '78%', icon: 'trending_up', color: 'emerald' },
+    { label: 'Active Courses', value: '12', icon: 'menu_book', color: 'brand' },
+    { label: 'Assessments Done', value: '450', icon: 'fact_check', color: 'amber' }
   ];
 
-  const studentBarData = [
-    { day: 'Mon', active: 4, target: 8 },
-    { day: 'Tue', active: 7, target: 8 },
-    { day: 'Wed', active: 5, target: 8 },
-    { day: 'Thu', active: 9, target: 8 },
-    { day: 'Fri', active: 8, target: 8 },
-    { day: 'Sat', active: 3, target: 8 },
-    { day: 'Sun', active: 6, target: 8 },
-  ];
-
-  // Instructor Mock Data
   const instructorPerformanceData = [
     { month: 'Jan', performance: 65 },
     { month: 'Feb', performance: 72 },
@@ -42,12 +44,158 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
     { month: 'Jun', performance: 90 },
   ];
 
-  const classMetrics = [
-    { label: 'Total Students', value: '1,284', icon: 'groups', color: 'indigo' },
-    { label: 'Avg. Class Grade', value: '78%', icon: 'trending_up', color: 'emerald' },
-    { label: 'Active Courses', value: '12', icon: 'menu_book', color: 'brand' },
-    { label: 'Assessments Done', value: '450', icon: 'fact_check', color: 'amber' }
-  ];
+  useEffect(() => {
+    if (isStudent && user) {
+      fetchStudentData();
+      fetchRecentLessons();
+    } else if (!isStudent) {
+      setLoading(false); // Instructor view uses mock for now
+    }
+  }, [user, isStudent]);
+
+  const fetchRecentLessons = async () => {
+    try {
+      const { data } = await supabase
+        .from('lessons')
+        .select('id, title, chapters!inner(title, courses!inner(id, title, category, image))')
+        .limit(3);
+
+      if (data) {
+        const flattened = (data as any[]).map(item => {
+          const chapter = Array.isArray(item.chapters) ? item.chapters[0] : item.chapters;
+          const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
+          return {
+            id: item.id,
+            title: item.title,
+            courseId: course?.id || '',
+            courseTitle: course?.title || '',
+            category: course?.category || 'Educational',
+            image: course?.image
+          };
+        });
+        setRecentLessons(flattened);
+      }
+    } catch (err) {
+      console.error('Error fetching recent lessons:', err);
+    }
+  };
+
+  const fetchStudentData = async () => {
+    try {
+      setLoading(true);
+
+      const { data: enrollments } = await supabase
+        .from('enrollments')
+        .select('*')
+        .eq('user_id', user.id);
+
+      let activeCourses = 0;
+      let lessonsPassed = 0;
+
+      if (enrollments) {
+        activeCourses = enrollments.length;
+        enrollments.forEach(en => {
+          if (en.completed_lesson_ids) {
+            lessonsPassed += en.completed_lesson_ids.length;
+          }
+        });
+      }
+
+      const { data: results } = await supabase
+        .from('exam_results')
+        .select('*, exams(subject)')
+        .eq('user_id', user.id);
+
+      let examsPassed = 0;
+      let totalScore = 0;
+      let completedExamsCount = 0;
+
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const today = new Date();
+      const activityMap: Record<string, number> = {};
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        activityMap[days[d.getDay()]] = 0;
+      }
+
+      const subjectScores: Record<string, { total: number, count: number }> = {};
+
+      if (results) {
+        results.forEach(res => {
+          if (res.score >= 50) examsPassed++;
+          totalScore += res.score;
+          completedExamsCount++;
+
+          const resDate = new Date(res.created_at);
+          const dayName = days[resDate.getDay()];
+          if (activityMap[dayName] !== undefined) {
+            activityMap[dayName]++;
+          }
+
+          const subject = res.exams?.subject || 'General';
+          if (!subjectScores[subject]) subjectScores[subject] = { total: 0, count: 0 };
+          subjectScores[subject].total += res.score;
+          subjectScores[subject].count++;
+        });
+      }
+
+      let avgScore = 0;
+      let avgGpa = 0.00;
+      if (completedExamsCount > 0) {
+        avgScore = totalScore / completedExamsCount;
+        avgGpa = (avgScore / 25);
+      }
+
+      setMetrics({
+        activeCourses,
+        lessonsPassed,
+        avgGpa: Number(avgGpa.toFixed(2)),
+        examsPassed
+      });
+
+      const finalActivityData = Object.keys(activityMap).map(day => ({
+        day,
+        active: activityMap[day],
+        target: 2
+      }));
+      setActivityData(finalActivityData);
+
+      const finalRadarData = Object.keys(subjectScores).map(subject => ({
+        subject,
+        score: Math.round(subjectScores[subject].total / subjectScores[subject].count),
+        fullMark: 100
+      }));
+
+      if (finalRadarData.length === 0) {
+        setRadarData([
+          { subject: 'Math', score: 0, fullMark: 100 },
+          { subject: 'Science', score: 0, fullMark: 100 },
+          { subject: 'History', score: 0, fullMark: 100 },
+          { subject: 'Art', score: 0, fullMark: 100 },
+        ]);
+      } else {
+        while (finalRadarData.length < 3) {
+          finalRadarData.push({ subject: `Other ${finalRadarData.length}`, score: 0, fullMark: 100 });
+        }
+        setRadarData(finalRadarData);
+      }
+
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
+      </div>
+    );
+  }
 
   if (!isStudent) {
     return (
@@ -163,10 +311,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
             Academic Overview
           </div>
           <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight leading-tight uppercase">
-            Hi, Alex! 👋
+            Hi, {userMetadata?.full_name?.split(' ')[0] || 'Student'}! 👋
           </h1>
           <p className="text-slate-700 font-medium text-base">
-            Weekly performance: <span className="text-brand-600 font-bold">+12.4% Progress</span>
+            Your real-time academic progress and competency matrix
           </p>
         </div>
 
@@ -188,12 +336,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
         </div>
       </header>
 
+      {/* Primary Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
         {[
-          { id: 'content', label: 'Active Courses', value: '06', icon: 'auto_stories', color: 'indigo' },
-          { id: 'lessons-list', label: 'Lessons', value: '24', icon: 'description', color: 'brand' },
-          { id: 'analysis', label: 'Average GPA', value: '3.82', icon: 'military_tech', color: 'emerald' },
-          { id: 'exams', label: 'Exams Passed', value: '14', icon: 'quiz', color: 'amber' }
+          { id: 'content', label: 'Active Courses', value: metrics.activeCourses.toString().padStart(2, '0'), icon: 'auto_stories', color: 'indigo', progress: metrics.activeCourses > 0 ? 100 : 0 },
+          { id: 'lessons-list', label: 'Lessons Passed', value: metrics.lessonsPassed.toString().padStart(2, '0'), icon: 'description', color: 'brand', progress: metrics.lessonsPassed > 0 ? 100 : 0 },
+          { id: 'analysis', label: 'Average GPA', value: metrics.avgGpa.toFixed(2), icon: 'military_tech', color: 'emerald', progress: (metrics.avgGpa / 4.0) * 100 },
+          { id: 'exams', label: 'Exams Passed', value: metrics.examsPassed.toString().padStart(2, '0'), icon: 'quiz', color: 'amber', progress: (metrics.examsPassed / (metrics.examsPassed + 1 || 1)) * 100 }
         ].map((stat, i) => (
           <div
             key={i}
@@ -213,16 +362,45 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
               <h3 className="text-4xl font-black text-slate-900 tracking-tight">{stat.value}</h3>
               <div className="mt-10 flex items-center gap-2">
                 <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden p-[1px] border border-slate-200">
-                  <div className={`h-full rounded-full transition-all duration-1000 ${stat.color === 'brand' ? 'bg-brand-500' : 'bg-' + stat.color + '-500'}`} style={{ width: '70%' }}></div>
+                  <div className={`h-full rounded-full transition-all duration-1000 ${stat.color === 'brand' ? 'bg-brand-500' : 'bg-' + stat.color + '-500'}`} style={{ width: `${stat.progress}%` }}></div>
                 </div>
-                <span className="text-[9px] font-black text-slate-600">70%</span>
+                <span className="text-[9px] font-black text-slate-600">{Math.round(stat.progress)}%</span>
               </div>
             </div>
           </div>
         ))}
       </div>
 
+      {/* Consistency Section: Recent Explanations */}
+      <section className="space-y-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Recent Explanations</h2>
+          <button onClick={() => onNavigate('lessons-list')} className="text-[10px] font-black text-brand-500 uppercase tracking-widest hover:underline">Explore All Lessons</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {recentLessons.map((lesson, i) => (
+            <div
+              key={i}
+              className="bg-white rounded-3xl border border-slate-200 overflow-hidden hover:shadow-xl transition-all group cursor-pointer"
+              onClick={() => onNavigate('lesson-view', lesson.courseId, lesson.id)}
+            >
+              <div className="aspect-video relative overflow-hidden">
+                <img src={lesson.image || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&q=80`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={lesson.title} />
+                <div className="absolute top-4 left-4">
+                  <span className="bg-white/95 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest text-brand-500 shadow-sm">{lesson.category}</span>
+                </div>
+              </div>
+              <div className="p-6">
+                <h3 className="font-black text-slate-900 uppercase text-sm tracking-tight mb-2 group-hover:text-brand-500 transition-colors line-clamp-1">{lesson.title}</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lesson.courseTitle}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        {/* Momentum & Competency charts... */}
         <div className="xl:col-span-2 bg-white p-14 rounded-[32px] border border-slate-200 shadow-sm space-y-12 min-h-[550px]">
           <div className="flex items-center justify-between">
             <div>
@@ -233,17 +411,17 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
 
           <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={studentBarData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '700', fill: '#475569' }} dy={15} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '600', fill: '#475569' }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '600', fill: '#475569' }} />
                 <Tooltip
                   cursor={{ fill: '#f1f5f9', radius: 12 }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.08)', padding: '16px' }}
                 />
                 <Bar dataKey="active" radius={[8, 8, 0, 0]} barSize={48}>
-                  {studentBarData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.active >= entry.target ? '#4850e5' : '#94a3b8'} />
+                  {activityData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.active > 0 ? '#4850e5' : '#e2e8f0'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -261,10 +439,14 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
 
           <div className="flex-1 w-full h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={studentChartData}>
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                 <PolarGrid stroke="rgba(255,255,255,0.1)" />
                 <PolarAngleAxis dataKey="subject" tick={{ fontSize: 9, fontWeight: '700', fill: 'rgba(255,255,255,0.6)' }} />
                 <Radar name="Proficiency" dataKey="score" stroke="#4850e5" strokeWidth={2} fill="#4850e5" fillOpacity={0.3} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                  itemStyle={{ color: '#fff', fontWeight: 'bold' }}
+                />
               </RadarChart>
             </ResponsiveContainer>
           </div>

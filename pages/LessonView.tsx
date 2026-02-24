@@ -5,11 +5,12 @@ import { useAuth } from '../src/contexts/AuthContext';
 interface LessonViewProps {
   onBack: () => void;
   courseId: string;
+  initialLessonId?: string | null;
   onComplete?: () => void;
   onTakeExam?: (lessonId: string, lessonTitle: string) => void;
 }
 
-const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, onTakeExam }) => {
+const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLessonId, onComplete, onTakeExam }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [chapters, setChapters] = useState<any[]>([]);
@@ -17,26 +18,52 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
   const [enrollment, setEnrollment] = useState<any>(null);
   const [course, setCourse] = useState<any>(null);
 
+  // Ref for scroll tracking
+  const mainRef = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     fetchLessonData();
-  }, [courseId, user]);
+  }, [courseId, initialLessonId, user]);
 
   const fetchLessonData = async () => {
+    // Validate UUID format to avoid Supabase 400 errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!courseId || !uuidRegex.test(courseId)) {
+      console.warn('LessonView: Invalid courseId format, skipping fetch:', courseId);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
       // Parallelize Course and Chapter fetching
-      const [courseRes, chaptersRes] = await Promise.all([
-        supabase.from('courses').select('*').eq('id', courseId).single(),
-        supabase.from('chapters').select('*, lessons (*)').eq('course_id', courseId).order('order')
-      ]);
+      const courseRes = await supabase.from('courses').select('*').eq('id', courseId).single();
+      const chaptersRes = await supabase
+        .from('chapters')
+        .select('*, lessons (*)')
+        .eq('course_id', courseId)
+        .order('created_at');
+
+      if (chaptersRes.error) {
+        console.error('Error fetching chapters:', chaptersRes.error);
+        throw chaptersRes.error;
+      }
 
       setCourse(courseRes.data);
 
       const chaptersData = chaptersRes.data;
+      console.log('Fetched chapters for course:', courseId, chaptersData?.length);
+
       if (chaptersData) {
         chaptersData.forEach(chapter => {
-          chapter.lessons.sort((a: any, b: any) => a.order - b.order);
+          // Lessons don't have order yet, sort by created_at
+          if (chapter.lessons) {
+            chapter.lessons.sort((a: any, b: any) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          }
+          console.log(`Chapter "${chapter.title}" has ${chapter.lessons?.length} lessons`);
         });
         setChapters(chaptersData);
       }
@@ -48,31 +75,49 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
           .from('enrollments')
           .select('*')
           .eq('user_id', user.id)
-          .eq('course_id', courseId)
-          .single();
-        enrollmentData = data;
+          .eq('course_id', courseId);
+
+        // Use the first enrollment if multiple exist (shouldn't happen but for safety)
+        enrollmentData = (data && data.length > 0) ? data[0] : null;
+        console.log('Enrollment found:', !!enrollmentData);
         setEnrollment(enrollmentData);
       }
 
       // Determine which lesson to show
       let lessonToLoad = null;
 
-      if (enrollmentData?.last_accessed_lesson_id) {
+      // Try 0: Specific initial lesson requested
+      if (initialLessonId) {
         for (const ch of (chaptersData || [])) {
-          const found = ch.lessons.find((l: any) => l.id === enrollmentData.last_accessed_lesson_id);
+          const found = ch.lessons.find((l: any) => l.id === initialLessonId);
           if (found) {
             lessonToLoad = found;
+            console.log('Loading explicitly requested initial lesson:', lessonToLoad.title);
             break;
           }
         }
       }
 
+      // Try 1: Last accessed
+      if (!lessonToLoad && enrollmentData?.last_accessed_lesson_id) {
+        for (const ch of (chaptersData || [])) {
+          const found = ch.lessons.find((l: any) => l.id === enrollmentData.last_accessed_lesson_id);
+          if (found) {
+            lessonToLoad = found;
+            console.log('Loading last accessed lesson:', lessonToLoad.title);
+            break;
+          }
+        }
+      }
+
+      // Try 2: First uncompleted lesson
       if (!lessonToLoad && chaptersData) {
         const completedIds = enrollmentData?.completed_lesson_ids || [];
         for (const ch of chaptersData) {
           for (const l of ch.lessons) {
             if (!completedIds.includes(l.id)) {
               lessonToLoad = l;
+              console.log('Loading first uncompleted lesson:', lessonToLoad.title);
               break;
             }
           }
@@ -80,11 +125,18 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
         }
       }
 
-      if (!lessonToLoad && chaptersData && chaptersData.length > 0 && chaptersData[0].lessons.length > 0) {
-        lessonToLoad = chaptersData[0].lessons[0];
+      // Try 3: Absolute first lesson of the course
+      if (!lessonToLoad && chaptersData) {
+        for (const ch of chaptersData) {
+          if (ch.lessons && ch.lessons.length > 0) {
+            lessonToLoad = ch.lessons[0];
+            console.log('Fallback to absolute first lesson:', lessonToLoad.title);
+            break;
+          }
+        }
       }
 
-      // Only update state once
+      console.log('Final lesson plan:', lessonToLoad?.title || 'NONE FOUND');
       setCurrentLesson(lessonToLoad);
 
       // Async update last accessed (fire and forget)
@@ -103,7 +155,11 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
 
   // Helper to calculate and update progress
   const updateProgress = async (type: 'read' | 'quiz', value: any) => {
-    if (!user || !enrollment || !currentLesson) return;
+    // CRITICAL: Only track progress for authenticated students
+    if (!user || !enrollment || !currentLesson) {
+      console.log('Progress tracking disabled for visitor/unauthenticated user');
+      return;
+    }
 
     try {
       // 1. Get current lesson progress map 
@@ -183,15 +239,57 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
   };
 
   const handleMarkAsRead = () => {
-    updateProgress('read', true);
+    // Only invoke if not already read to prevent spamming
+    if (!enrollment?.lesson_progress?.[currentLesson?.id]?.read) {
+      updateProgress('read', true);
+    }
+  };
+
+  const handleScroll = () => {
+    if (!mainRef.current || !currentLesson || !enrollment) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = mainRef.current;
+
+    // Check if scrolled to the bottom (within a 50px threshold for usability)
+    if (scrollTop + clientHeight >= scrollHeight - 50) {
+      handleMarkAsRead();
+    }
   };
 
 
 
   // Removed legacy handleMarkAsRead and handleTakeQuiz as they are replaced/automated
 
-  if (loading) return <div className="p-10 text-center">Loading Lesson Content...</div>;
-  if (!currentLesson) return <div className="p-10 text-center">No lessons available for this course.</div>;
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-10 bg-slate-50 min-h-[400px]">
+        <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Loading content...</p>
+      </div>
+    );
+  }
+
+  if (!currentLesson) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-10 bg-slate-50 min-h-[400px] text-center space-y-6 animate-fade-in">
+        <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center shadow-inner">
+          <span className="material-symbols-outlined text-4xl text-slate-400">auto_stories</span>
+        </div>
+        <div className="max-w-md">
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Konu Bulunamadı</h2>
+          <p className="text-slate-500 font-medium leading-relaxed">
+            Seçtiğiniz derse ait konu anlatımı şu an mevcut değil veya henüz yayına alınmamış.
+          </p>
+        </div>
+        <button
+          onClick={onBack}
+          className="bg-brand-500 text-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
+        >
+          Konu Listesine Dön
+        </button>
+      </div>
+    );
+  }
 
   const isCompleted = enrollment?.completed_lesson_ids?.includes(currentLesson.id);
 
@@ -206,24 +304,30 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <div className="text-[10px] font-bold text-slate-500 mb-1">LESSON PROGRESS</div>
-            <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-brand-500 transition-all duration-500"
-                style={{ width: `${Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.scroll_percent || 0) / 2) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%` }}
-              ></div>
+          {user && (
+            <div className="flex flex-col items-end">
+              <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Lesson Progress</div>
+              <div className="flex items-center gap-3">
+                <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden p-[1px] border border-slate-200">
+                  <div
+                    className="h-full bg-brand-500 rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(72,80,229,0.3)]"
+                    style={{ width: `${Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.scroll_percent || 0) / 2) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%` }}
+                  ></div>
+                </div>
+                <span className="text-[10px] font-black text-brand-500">
+                  {Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.scroll_percent || 0) / 2) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%
+                </span>
+              </div>
             </div>
-            <span className="text-[10px] font-bold text-brand-500 mt-1">
-              {Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.scroll_percent || 0) / 2) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%
-            </span>
-          </div>
-
-
+          )}
         </div>
       </nav>
 
-      <main className="flex-1 overflow-y-auto custom-scrollbar pb-32 w-full">
+      <main
+        ref={mainRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto custom-scrollbar pb-32 w-full"
+      >
         <div className="max-w-3xl mx-auto">
           <header className="px-5 pt-12 pb-4">
             <div className="flex items-center gap-2 text-slate-600 text-xs mb-3 font-bold uppercase">
@@ -260,58 +364,35 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, onComplete, o
                 </div>
               )}
 
-              {/* Manual Confirmation Section */}
-              <div className="my-12 p-8 bg-slate-50 rounded-3xl border border-slate-200 text-center">
-                <h3 className="font-black text-lg text-slate-900 mb-2">Finished Reading?</h3>
-                <p className="text-sm text-slate-500 mb-6 font-bold">Mark this lesson as read to complete 50% of your progress.</p>
-
-                {enrollment?.lesson_progress?.[currentLesson.id]?.read ? (
-                  <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-700 px-6 py-3 rounded-xl font-black uppercase text-xs tracking-widest cursor-default">
-                    <span className="material-symbols-outlined">check_circle</span>
-                    Marked as Read
-                  </div>
+              {/* Auto-Complete Status Section or Visitor CTA */}
+              <div className="my-12 p-8 bg-slate-50 rounded-3xl border border-slate-200 text-center transition-all">
+                {!user ? (
+                  <>
+                    <div className="w-16 h-16 bg-slate-200 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="material-symbols-outlined text-3xl font-bold">person_add</span>
+                    </div>
+                    <h3 className="font-black text-xl text-slate-900 mb-2">Track Your Progress</h3>
+                    <p className="text-sm text-slate-500 font-medium">Join us today to save your progress, take certification exams, and unlock more advanced topics.</p>
+                  </>
+                ) : enrollment?.lesson_progress?.[currentLesson.id]?.read ? (
+                  <>
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="material-symbols-outlined text-3xl font-bold">done_all</span>
+                    </div>
+                    <h3 className="font-black text-xl text-slate-900 mb-2">Lesson Completed</h3>
+                    <p className="text-sm text-slate-500 font-medium">You have successfully finished reading this lesson.</p>
+                  </>
                 ) : (
-                  <button
-                    onClick={handleMarkAsRead}
-                    className="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-8 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-xl shadow-brand-500/20 active:scale-95 transition-all"
-                  >
-                    <span className="material-symbols-outlined">check</span>
-                    Mark as Completed
-                  </button>
+                  <>
+                    <div className="w-16 h-16 bg-brand-100 text-brand-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                      <span className="material-symbols-outlined text-3xl font-bold">arrow_downward</span>
+                    </div>
+                    <h3 className="font-black text-xl text-slate-900 mb-2">Keep Scrolling</h3>
+                    <p className="text-sm text-slate-500 font-medium">Scroll to the absolute bottom of the page to automatically mark this lesson as completed.</p>
+                  </>
                 )}
               </div>
 
-              {/* Unit Exam Redirect Section */}
-              <section className="bg-slate-900 rounded-3xl p-8 text-white shadow-2xl mt-16 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                <div className="relative z-10 flex flex-col md:flex-row items-center gap-8 text-center md:text-left">
-                  <div className="w-16 h-16 bg-brand-500 rounded-2xl flex items-center justify-center shrink-0 shadow-lg mt-2">
-                    <span className="material-symbols-outlined text-3xl font-bold">quiz</span>
-                  </div>
-                  <div className="flex-1 w-full">
-                    <h3 className="font-black text-2xl leading-tight uppercase tracking-tight mb-2">Unit Knowledge Check</h3>
-                    <p className="text-slate-400 text-sm font-bold mb-6">Complete a comprehensive exam to verify your understanding. Passing score contributes 50% to your lesson progress.</p>
-
-                    {enrollment?.lesson_progress?.[currentLesson.id]?.quiz_score >= 50 ? (
-                      <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-2xl p-6 flex items-center justify-between">
-                        <div>
-                          <h4 className="text-emerald-400 font-black uppercase tracking-widest text-sm">Exam Passed</h4>
-                          <p className="text-xs text-emerald-200 mt-1 font-bold">Your Score: {enrollment.lesson_progress[currentLesson.id].quiz_score}%</p>
-                        </div>
-                        <span className="material-symbols-outlined text-emerald-400 text-3xl">verified</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => onTakeExam && onTakeExam(currentLesson.id, currentLesson.title)}
-                        className="inline-flex items-center gap-3 bg-white text-slate-900 hover:bg-brand-50 hover:text-brand-600 px-8 py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl active:scale-95"
-                      >
-                        Start Unit Exam
-                        <span className="material-symbols-outlined text-lg">arrow_forward</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </section>
             </article>
           </div>
         </div>

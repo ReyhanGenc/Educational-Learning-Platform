@@ -30,6 +30,7 @@ const AppContent: React.FC = () => {
   const [view, setView] = useState<'landing' | 'login' | 'register' | 'pricing' | 'app' | 'public-lessons'>('landing');
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<Course[]>([]);
@@ -38,6 +39,7 @@ const AppContent: React.FC = () => {
   const [activeExamLessonId, setActiveExamLessonId] = useState<string | null>(null);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
+  const [featuredLessons, setFeaturedLessons] = useState<any[]>([]);
 
   // Fetch user data and courses
   useEffect(() => {
@@ -101,6 +103,29 @@ const AppContent: React.FC = () => {
         });
 
         setCourses(mergedCourses);
+
+        // 4. Fetch featured lessons for landing page
+        const { data: featuredData } = await supabase
+          .from('lessons')
+          .select('id, title, chapters!inner(title, courses!inner(id, title, category, image))')
+          .limit(6);
+
+        if (featuredData) {
+          const flattenedFeatured = (featuredData as any[]).map(item => {
+            const chapter = Array.isArray(item.chapters) ? item.chapters[0] : item.chapters;
+            const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
+            return {
+              id: item.id,
+              title: item.title,
+              chapterTitle: chapter?.title || '',
+              courseId: course?.id || '',
+              courseTitle: course?.title || '',
+              category: course?.category || 'Educational',
+              image: course?.image
+            };
+          });
+          setFeaturedLessons(flattenedFeatured);
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -263,7 +288,9 @@ const AppContent: React.FC = () => {
     setCurrentPage('lessons-list');
   };
 
-  const handleSelectPublicLesson = (id: string) => {
+  const handleSelectPublicLesson = (courseId: string, lessonId: string) => {
+    setActiveCourseId(courseId);
+    setActiveLessonId(lessonId);
     setView('public-lessons');
     setCurrentPage('lesson-view');
   };
@@ -360,6 +387,7 @@ const AppContent: React.FC = () => {
         onPricing={() => setView('pricing')}
         onViewLessons={handleViewPublicLessons}
         onSelectLesson={handleSelectPublicLesson}
+        featuredLessons={featuredLessons}
       />
     );
   }
@@ -396,12 +424,23 @@ const AppContent: React.FC = () => {
             </button>
           </header>
           <main className="flex-1 overflow-y-auto custom-scrollbar">
-            {currentPage === 'lessons-list' ? (
-              <LessonsList onSelectLesson={() => setCurrentPage('lesson-view')} onBack={() => setView('landing')} />
+            {(currentPage === 'lessons-list' || !activeCourseId || activeCourseId === 'preview-mode') ? (
+              <LessonsList
+                onSelectLesson={(courseId: string, lessonId: string) => {
+                  setActiveCourseId(courseId);
+                  setActiveLessonId(lessonId);
+                  setCurrentPage('lesson-view');
+                }}
+                onBack={() => setView('landing')}
+              />
             ) : (
               <LessonView
-                courseId={activeCourseId || 'preview-mode'}
-                onBack={() => setCurrentPage('lessons-list')}
+                courseId={activeCourseId}
+                initialLessonId={activeLessonId}
+                onBack={() => {
+                  setCurrentPage('lessons-list');
+                  setActiveLessonId(null);
+                }}
               />
             )}
           </main>
@@ -420,7 +459,18 @@ const AppContent: React.FC = () => {
 
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard role={role!} onNavigate={setCurrentPage} cartCount={cart.length} onOpenCart={() => setIsCartOpen(true)} />;
+        return (
+          <Dashboard
+            role={role!}
+            onNavigate={(page, cId, lId) => {
+              setCurrentPage(page);
+              if (cId) setActiveCourseId(cId);
+              if (lId) setActiveLessonId(lId);
+            }}
+            cartCount={cart.length}
+            onOpenCart={() => setIsCartOpen(true)}
+          />
+        );
       case 'content':
         return isInstructor
           ? <Management />
@@ -466,13 +516,25 @@ const AppContent: React.FC = () => {
       case 'settings':
         return <Settings role={role!} />;
       case 'lessons-list':
-        return <LessonsList onSelectLesson={() => setCurrentPage('lesson-view')} onBack={() => setCurrentPage('dashboard')} />;
+        return (
+          <LessonsList
+            onSelectLesson={(courseId: string, lessonId: string) => {
+              setActiveCourseId(courseId);
+              setActiveLessonId(lessonId);
+              setCurrentPage('lesson-view');
+            }}
+            onBack={() => setCurrentPage('dashboard')}
+          />
+        );
       case 'lesson-view':
-        const currentCourse = courses.find(c => c.id === activeCourseId);
         return (
           <LessonView
             courseId={activeCourseId!}
-            onBack={() => setCurrentPage(activeCourseId ? 'course-details' : 'lessons-list')}
+            initialLessonId={activeLessonId}
+            onBack={() => {
+              setCurrentPage(activeCourseId ? 'course-details' : 'lessons-list');
+              setActiveLessonId(null);
+            }}
             onTakeExam={(lessonId) => {
               setActiveExamLessonId(lessonId);
               setCurrentPage('unit-exam');
