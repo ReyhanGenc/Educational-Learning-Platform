@@ -168,7 +168,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
                   onClick={() => onSelectLesson?.(lesson.courseId, lesson.id)}
                 >
                   <div className="aspect-[4/3] overflow-hidden relative">
-                    <img src={lesson.image || `https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&q=80`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={lesson.title} />
+                    <img src={lesson.image || `https://picsum.photos/seed/${lesson.id}/1200/800`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={lesson.title} />
                     <div className="absolute top-6 left-6">
                       <span className="bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-900 shadow-sm">
                         {lesson.category} • {lesson.courseTitle}
@@ -228,15 +228,15 @@ const LandingPage: React.FC<LandingPageProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4 pt-12">
                 <div className="bg-white p-2 rounded-3xl shadow-xl border border-slate-100">
-                  <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80" className="rounded-2xl" alt="Feature 1" />
+                  <img src="https://picsum.photos/seed/feature1/1200/800" className="rounded-2xl" alt="Feature 1" />
                 </div>
                 <div className="bg-white p-2 rounded-3xl shadow-xl border border-slate-100">
-                  <img src="https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=400&q=80" className="rounded-2xl" alt="Feature 2" />
+                  <img src="https://picsum.photos/seed/feature2/1200/800" className="rounded-2xl" alt="Feature 2" />
                 </div>
               </div>
               <div className="space-y-4">
                 <div className="bg-white p-2 rounded-3xl shadow-xl border border-slate-100">
-                  <img src="https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=400&q=80" className="rounded-2xl" alt="Feature 3" />
+                  <img src="https://picsum.photos/seed/feature3/1200/800" className="rounded-2xl" alt="Feature 3" />
                 </div>
                 <div className="bg-brand-500 p-8 rounded-3xl shadow-xl text-white flex flex-col justify-end min-h-[200px]">
                   <h4 className="text-2xl font-bold leading-tight">Join 5,000+ Schools</h4>

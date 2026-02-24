@@ -1,18 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserRole } from '../types';
+import { UserRole, Course } from '../types';
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/contexts/AuthContext';
 
 interface DashboardProps {
   role: UserRole;
+  courses?: Course[];
   onNavigate: (page: string, courseId?: string, lessonId?: string) => void;
   cartCount?: number;
   onOpenCart?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, onOpenCart }) => {
+const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, cartCount = 0, onOpenCart }) => {
   const { user, userMetadata } = useAuth();
   const isStudent = role === UserRole.STUDENT;
 
@@ -51,7 +52,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
     } else if (!isStudent) {
       setLoading(false); // Instructor view uses mock for now
     }
-  }, [user, isStudent]);
+  }, [user, isStudent, courses]);
 
   const fetchRecentLessons = async () => {
     try {
@@ -84,27 +85,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
     try {
       setLoading(true);
 
-      const { data: enrollments } = await supabase
-        .from('enrollments')
-        .select('*')
-        .eq('user_id', user.id);
-
-      let activeCourses = 0;
-      let lessonsPassed = 0;
-
-      if (enrollments) {
-        activeCourses = enrollments.length;
-        enrollments.forEach(en => {
-          if (en.completed_lesson_ids) {
-            lessonsPassed += en.completed_lesson_ids.length;
-          }
-        });
-      }
+      const activeCourses = courses.filter(c => c.isPurchased).length;
+      const lessonsPassed = courses.reduce((acc, c) => acc + (c.completed || 0), 0);
 
       const { data: results } = await supabase
         .from('exam_results')
         .select('*, exams(subject)')
-        .eq('user_id', user.id);
+        .eq('user_id', user!.id);
 
       let examsPassed = 0;
       let totalScore = 0;
@@ -155,16 +142,22 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
         examsPassed
       });
 
-      const finalActivityData = Object.keys(activityMap).map(day => ({
-        day,
-        active: activityMap[day],
-        target: 2
+      const finalActivityData = courses.filter(c => c.isPurchased).map(c => ({
+        name: c.title.length > 12 ? c.title.substring(0, 12) + '...' : c.title,
+        progress: c.progress || 0
       }));
-      setActivityData(finalActivityData);
+      setActivityData(finalActivityData.length > 0 ? finalActivityData : [{ name: 'No Courses', progress: 0 }]);
 
-      const finalRadarData = Object.keys(subjectScores).map(subject => ({
-        subject,
-        score: Math.round(subjectScores[subject].total / subjectScores[subject].count),
+      const categoryProgress: Record<string, { total: number, count: number }> = {};
+      courses.filter(c => c.isPurchased).forEach(c => {
+        const cat = c.category || 'General';
+        if (!categoryProgress[cat]) categoryProgress[cat] = { total: 0, count: 0 };
+        categoryProgress[cat].total += c.progress || 0;
+        categoryProgress[cat].count++;
+      });
+      const finalRadarData = Object.keys(categoryProgress).map(cat => ({
+        subject: cat,
+        score: Math.round(categoryProgress[cat].total / categoryProgress[cat].count),
         fullMark: 100
       }));
 
@@ -172,8 +165,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
         setRadarData([
           { subject: 'Math', score: 0, fullMark: 100 },
           { subject: 'Science', score: 0, fullMark: 100 },
-          { subject: 'History', score: 0, fullMark: 100 },
-          { subject: 'Art', score: 0, fullMark: 100 },
+          { subject: 'History', score: 0, fullMark: 100 }
         ]);
       } else {
         while (finalRadarData.length < 3) {
@@ -275,23 +267,24 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
             <div className="absolute top-0 right-0 w-80 h-80 bg-brand-500/10 rounded-full -mr-40 -mt-40 blur-3xl"></div>
             <h3 className="text-xl font-black text-white tracking-widest uppercase mb-12 relative z-10">Unit Engagement</h3>
             <div className="space-y-10 relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-2">
-              {[
-                { name: 'Advanced Calculus', rate: 92 },
-                { name: 'Molecular Genetics', rate: 78 },
-                { name: 'UI/UX Fundamentals', rate: 85 },
-                { name: 'Cold War History', rate: 64 },
-                { name: 'Data Structures', rate: 88 }
-              ].map((course, i) => (
-                <div key={i} className="space-y-3">
-                  <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em]">
-                    <span className="text-slate-400">{course.name}</span>
-                    <span className="text-white">{course.rate}%</span>
+              {courses.filter(c => c.isPurchased).length > 0 ? (
+                courses.filter(c => c.isPurchased).map((course, i) => (
+                  <div key={i} className="space-y-3 cursor-pointer" onClick={() => onNavigate('course-details', course.id)}>
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em]">
+                      <span className="text-slate-400">{course.title}</span>
+                      <span className="text-white">{course.progress}%</span>
+                    </div>
+                    <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                      <div className="h-full bg-brand-500 rounded-full transition-all duration-1000" style={{ width: `${course.progress}%` }}></div>
+                    </div>
                   </div>
-                  <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                    <div className="h-full bg-brand-500 rounded-full transition-all duration-1000" style={{ width: `${course.rate}%` }}></div>
-                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+                  <span className="material-symbols-outlined text-4xl text-white mb-4">school</span>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white">No active enrollments</p>
                 </div>
-              ))}
+              )}
             </div>
             <button onClick={() => onNavigate('content')} className="mt-12 w-full bg-white text-slate-900 font-black py-5 rounded-2xl shadow-xl hover:bg-slate-100 transition-all text-[10px] uppercase tracking-[0.3em]">
               Manage Repository
@@ -371,41 +364,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
         ))}
       </div>
 
-      {/* Consistency Section: Recent Explanations */}
-      <section className="space-y-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Recent Explanations</h2>
-          <button onClick={() => onNavigate('lessons-list')} className="text-[10px] font-black text-brand-500 uppercase tracking-widest hover:underline">Explore All Lessons</button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {recentLessons.map((lesson, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-3xl border border-slate-200 overflow-hidden hover:shadow-xl transition-all group cursor-pointer"
-              onClick={() => onNavigate('lesson-view', lesson.courseId, lesson.id)}
-            >
-              <div className="aspect-video relative overflow-hidden">
-                <img src={lesson.image || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&q=80`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={lesson.title} />
-                <div className="absolute top-4 left-4">
-                  <span className="bg-white/95 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest text-brand-500 shadow-sm">{lesson.category}</span>
-                </div>
-              </div>
-              <div className="p-6">
-                <h3 className="font-black text-slate-900 uppercase text-sm tracking-tight mb-2 group-hover:text-brand-500 transition-colors line-clamp-1">{lesson.title}</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lesson.courseTitle}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Momentum & Competency charts... */}
         <div className="xl:col-span-2 bg-white p-14 rounded-[32px] border border-slate-200 shadow-sm space-y-12 min-h-[550px]">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase tracking-wider">Learning Momentum</h3>
-              <p className="text-slate-700 text-xs font-medium">Productivity Tracking</p>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase tracking-wider">Course Progress</h3>
+              <p className="text-slate-700 text-xs font-medium">Your progress across active courses</p>
             </div>
           </div>
 
@@ -413,15 +378,15 @@ const Dashboard: React.FC<DashboardProps> = ({ role, onNavigate, cartCount = 0, 
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '700', fill: '#475569' }} dy={15} />
-                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '600', fill: '#475569' }} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '700', fill: '#475569' }} dy={15} />
+                <YAxis domain={[0, 100]} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '600', fill: '#475569' }} />
                 <Tooltip
                   cursor={{ fill: '#f1f5f9', radius: 12 }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.08)', padding: '16px' }}
                 />
-                <Bar dataKey="active" radius={[8, 8, 0, 0]} barSize={48}>
+                <Bar dataKey="progress" radius={[8, 8, 0, 0]} barSize={48}>
                   {activityData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.active > 0 ? '#4850e5' : '#e2e8f0'} />
+                    <Cell key={`cell-${index}`} fill={entry.progress > 0 ? '#4850e5' : '#e2e8f0'} />
                   ))}
                 </Bar>
               </BarChart>

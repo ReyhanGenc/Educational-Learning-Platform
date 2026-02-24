@@ -101,7 +101,6 @@ const Settings: React.FC<SettingsProps> = ({ role }) => {
                       className="w-full h-full rounded-full object-cover"
                     />
                   </div>
-                  <button className="text-xs font-bold text-brand-500 hover:text-brand-600">Change Avatar</button>
                 </div>
 
                 <div className="flex-1 w-full space-y-6">

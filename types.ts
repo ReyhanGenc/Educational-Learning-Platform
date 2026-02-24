@@ -54,7 +54,8 @@ export interface Course {
   level?: string;
   rating?: number;
   total_duration?: string;
-  lesson_progress?: Record<string, { read: boolean; quiz_score?: number; scroll_percent?: number }>;
+  lesson_progress?: Record<string, { read: boolean; quiz_score?: number; scroll_percent?: number; quiz_answers?: Record<number, string> }>;
+  completed_lesson_ids?: string[];
 }
 
 export interface Chapter {

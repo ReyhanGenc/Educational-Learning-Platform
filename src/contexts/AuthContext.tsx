@@ -217,29 +217,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(true);
 
         try {
-            // Updated to update progress to 0 instead of delete row
-            const { error: resetError } = await supabase
+            console.log('--- TAM SIFIRLAMA BAŞLATILDI ---');
+            console.log('Kullanıcı ID:', user.id);
+
+            // 1. Kurs/Ders İlerlemelerini Temizle
+            const { error: enrollError } = await supabase
                 .from('enrollments')
                 .update({
                     progress: 0,
-                    // completed_units: 0 // If this column exists
+                    lesson_progress: {},
+                    completed_lesson_ids: [],
+                    last_accessed_lesson_id: null
                 })
                 .eq('user_id', user.id);
 
-            if (resetError) {
-                console.error('Error resetting progress:', resetError);
-                throw new Error('Failed to reset progress');
+            if (enrollError) {
+                console.error('Kurs ilerlemesi sıfırlanırken hata oluştu:', enrollError);
+                throw new Error(`Kurs ilerlemesi sıfırlanamadı: ${enrollError.message}`);
+            }
+            console.log('Kurs ilerlemeleri sıfırlandı.');
+
+            // 2. Sınav Geçmişini Veritabanından TAMAMEN Sil
+            // Bu işlem Exams sayfasındaki sınavların "Browse" sekmesine dönmesini sağlar.
+
+            // First check if they have any results at all
+            const { count: existingCount } = await supabase
+                .from('exam_results')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', user.id);
+
+            const { error: deleteExamError, count } = await supabase
+                .from('exam_results')
+                .delete({ count: 'exact' })
+                .eq('user_id', user.id);
+
+            if (deleteExamError) {
+                console.error('Sınav kayıtları silinirken hata oluştu:', deleteExamError);
+                throw new Error(`Sınav ilerlemeleri silinemedi: ${deleteExamError.message}`);
+            } else {
+                console.log(`${count} adet sınav kaydı kalıcı olarak silindi.`);
+                if (existingCount && existingCount > 0 && count === 0) {
+                    // This means they have results, but the delete policy blocked it!
+                    alert('UYARI: Sınav ilerlemeleriniz silinemedi! Bu durum büyük ihtimalle Supabase veritabanınızda "exam_results" tablosu için DELETE (Silme) RLS Policy ayarlarının eksik olmasından kaynaklanmaktadır. Lütfen Supabase panelinden "exam_results" tablosu için kullanıcıların kendi verilerini silebilmesine (Delete - user_id = auth.uid()) izin verin.');
+                }
             }
 
-            // Also reset any exam progress if applicable
-            // const { error: examError } = await supabase.from('exam_results').delete().eq('user_id', user.id);
+            console.log('--- SIFIRLAMA TAMAMLANDI ---');
+            alert('Hesabınız başarıyla sıfırlandı. Tüm sınav sonuçlarınız veritabanından kalıcı olarak silindi ve ders ilerlemeleriniz temizlendi. Artık tüm sınavları tekrar çözebilirsiniz.');
 
-            alert('Your learning progress has been reset successfully.');
-            // Ideally trigger a re-fetch of courses or enrollments here
-            window.location.reload(); // Simple way to refresh data for now
-        } catch (error) {
-            console.error('Error resetting progress:', error);
-            throw error;
+            // Verilerin taze çekilmesi için uygulamayı kökten yenile
+            window.location.href = '/';
+        } catch (error: any) {
+            console.error('Sıfırlama hatası:', error);
+            alert(`Sıfırlama işlemi başarısız oldu: ${error.message}`);
         } finally {
             setLoading(false);
         }

@@ -6,11 +6,12 @@ import { Course, Chapter, Lesson } from '../types';
 interface CourseDetailsProps {
   onBack: () => void;
   onStartLesson: (lessonId?: string) => void;
+  onTakeExam: (lessonId: string, title: string) => void;
   course?: Course;
   previewMode?: boolean;
 }
 
-const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, course, previewMode = false }) => {
+const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, onTakeExam, course, previewMode = false }) => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,15 +57,22 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
   const getLessonStatus = (lessonId: string) => {
     if (previewMode) return { status: 'Locked', icon: 'lock', color: 'slate' };
 
-    // Check granular progress
+    // Check granular progress + Legacy fallback
     const progress = course?.lesson_progress?.[lessonId];
-    const scrollScore = Math.round((progress?.scroll_percent || 0) / 2);
-    const examScore = (progress?.quiz_score || 0) >= 50 ? 50 : 0;
-    const totalScore = scrollScore + examScore;
+    const isLegacy = course?.completed_lesson_ids?.includes(lessonId);
+
+    const readScore = (progress?.read || isLegacy) ? 50 : 0;
+    const examScore = ((progress?.quiz_score || 0) >= 50 || isLegacy) ? 50 : 0;
+    const totalScore = readScore + examScore;
 
     // If Completed
     if (totalScore >= 95) {
       return { status: 'Completed', icon: 'check_circle', color: 'emerald' };
+    }
+
+    // If Partially Completed (Read but not passed quiz)
+    if (readScore >= 50) {
+      return { status: 'Partially Completed', icon: 'pending', color: 'amber' };
     }
 
     // Check Locking
@@ -75,8 +83,9 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
 
     // Check previous lesson status
     const prevLesson = allLessons[index - 1];
-    const prevProgress = course?.lesson_progress?.[prevLesson.id];
-    const prevTotal = Math.round((prevProgress?.scroll_percent || 0) / 2) + ((prevProgress?.quiz_score || 0) >= 50 ? 50 : 0);
+    const prevEntry = course?.lesson_progress?.[prevLesson.id];
+    const prevIsLegacy = course?.completed_lesson_ids?.includes(prevLesson.id);
+    const prevTotal = (prevEntry?.read || prevIsLegacy ? 50 : 0) + (((prevEntry?.quiz_score || 0) >= 50 || prevIsLegacy) ? 50 : 0);
 
     if (prevTotal >= 95) {
       return { status: 'Open', icon: 'play_arrow', color: 'brand' };
@@ -140,28 +149,45 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, co
                       return (
                         <div
                           key={lesson.id}
-                          onClick={() => {
+                          className={`p-6 bg-white rounded-[24px] border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all group 
+                            ${isLocked ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-brand-500 cursor-pointer hover:shadow-xl'}
+                          `}
+                          onClick={(e) => {
+                            // Don't trigger lesson view if clicking exam button
                             if (!previewMode && !isLocked) onStartLesson(lesson.id);
                             if (isLocked) alert('Complete the previous lesson to unlock this one!');
                           }}
-                          className={`p-8 bg-white rounded-[24px] border border-slate-200 shadow-sm flex items-center justify-between transition-all group 
-                            ${isLocked ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-brand-500 cursor-pointer hover:shadow-xl'}
-                          `}
                         >
                           <div className="flex items-center gap-6">
                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border 
                                         ${status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                isLocked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
+                                status === 'Partially Completed' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                  isLocked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
                                     `}>
                               <span className="material-symbols-outlined text-2xl font-bold">{icon}</span>
                             </div>
                             <div>
-                              <h4 className={`text-base font-black tracking-tight uppercase transition-colors ${isLocked ? 'text-slate-500' : 'text-slate-900 group-hover:text-brand-500'}`}>{lesson.title}</h4>
-                              <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-1">Duration: {lesson.duration || '20m'}</p>
+                              <h4 className={`text-sm font-black tracking-tight uppercase transition-colors ${isLocked ? 'text-slate-500' : 'text-slate-900 group-hover:text-brand-500'}`}>{lesson.title}</h4>
+                              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Duration: {lesson.duration || '20m'}</p>
                             </div>
                           </div>
-                          {!isLocked && <span className="material-symbols-outlined text-slate-500 group-hover:text-brand-500 transition-colors font-bold">arrow_forward_ios</span>}
-                          {isLocked && <span className="material-symbols-outlined text-slate-300 font-bold">lock</span>}
+
+                          <div className="flex items-center gap-2">
+                            {!isLocked && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onTakeExam(lesson.id, lesson.title);
+                                }}
+                                className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-600 transition-all flex items-center gap-2"
+                              >
+                                <span className="material-symbols-outlined text-sm text-brand-400">quiz</span>
+                                Take Exam
+                              </button>
+                            )}
+                            {!isLocked && <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors font-bold ml-2">arrow_forward_ios</span>}
+                            {isLocked && <span className="material-symbols-outlined text-slate-300 font-bold">lock</span>}
+                          </div>
                         </div>
                       );
                     })}

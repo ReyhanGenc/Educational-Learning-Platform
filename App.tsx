@@ -22,6 +22,8 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import CartDrawer from './components/CartDrawer';
 import Payment from './pages/Payment';
+import TopicExplanationView from './pages/TopicExplanationView';
+import { UNIT_EXAMS } from './src/data/unit_exams';
 import { mockExams } from './pages/ExamList';
 import { supabase } from './src/lib/supabase';
 
@@ -39,7 +41,9 @@ const AppContent: React.FC = () => {
   const [activeExamLessonId, setActiveExamLessonId] = useState<string | null>(null);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [featuredLessons, setFeaturedLessons] = useState<any[]>([]);
+  const [lessonBackTarget, setLessonBackTarget] = useState<'course-details' | 'lessons-list'>('course-details');
 
   // Fetch user data and courses
   useEffect(() => {
@@ -70,16 +74,36 @@ const AppContent: React.FC = () => {
         // 3. Merge data
         console.log('Courses before merge:', coursesData?.length);
         const mergedCourses: Course[] = (coursesData || []).map((course: any) => {
-          const enrollment = userEnrollments.find(e => {
-            const match = e.course_id === course.id;
-            if (match) console.log('Found enrollment for:', course.title);
-            return match;
+          const enrollment = userEnrollments.find(e => e.course_id === course.id);
+          const progressMap = enrollment?.lesson_progress || {};
+          const completedIds = enrollment?.completed_lesson_ids || [];
+
+          let totalPointsPossible = 0;
+          let totalPointsEarned = 0;
+          let completedLessonsCount = 0;
+
+          (course.chapters || []).forEach((ch: any) => {
+            (ch.lessons || []).forEach((l: any) => {
+              totalPointsPossible += 100;
+              const p = progressMap[l.id] || {};
+              const isLegacy = completedIds.includes(l.id);
+
+              const rScore = (p.read || isLegacy) ? 50 : 0;
+              const qScore = ((p.quiz_score || 0) >= 50 || isLegacy) ? 50 : 0;
+              const lScore = rScore + qScore;
+
+              totalPointsEarned += lScore;
+              if (lScore >= 95) completedLessonsCount++;
+            });
           });
 
-          // Calculate total lessons
           const totalLessons = (course.chapters || []).reduce((acc: number, chapter: any) => {
             return acc + (chapter.lessons?.length || 0);
           }, 0);
+
+          const dynamicProgress = totalPointsPossible > 0
+            ? Math.round((totalPointsEarned / totalPointsPossible) * 100)
+            : 0;
 
           return {
             id: course.id,
@@ -95,10 +119,11 @@ const AppContent: React.FC = () => {
 
             // Enrollment data
             isPurchased: !!enrollment,
-            progress: enrollment ? enrollment.progress : 0,
-            completed: enrollment ? (enrollment.completed_lesson_ids?.length || 0) : 0,
+            progress: enrollment ? dynamicProgress : 0,
+            completed: enrollment ? completedLessonsCount : 0,
             total: totalLessons > 0 ? totalLessons : 0,
             lesson_progress: enrollment ? enrollment.lesson_progress : {},
+            completed_lesson_ids: completedIds
           };
         });
 
@@ -289,13 +314,13 @@ const AppContent: React.FC = () => {
   };
 
   const handleSelectPublicLesson = (courseId: string, lessonId: string) => {
-    setActiveCourseId(courseId);
-    setActiveLessonId(lessonId);
+    // This now handles standalone topic selection from the landing page
+    setActiveTopicId(lessonId);
     setView('public-lessons');
-    setCurrentPage('lesson-view');
+    setCurrentPage('topic-view');
   };
 
-  const handleUnitExamComplete = async (score: number) => {
+  const handleUnitExamComplete = async (score: number, answers?: Record<number, string>) => {
     if (!user || !activeExamLessonId || !activeCourseId) return;
 
     try {
@@ -314,6 +339,7 @@ const AppContent: React.FC = () => {
       const lessonProgress = currentProgressMap[activeExamLessonId] || {};
 
       lessonProgress.quiz_score = score;
+      lessonProgress.quiz_answers = answers; // Save answers for persistence
 
       const newProgressMap = {
         ...currentProgressMap,
@@ -367,9 +393,14 @@ const AppContent: React.FC = () => {
 
       alert(`Exam Completed! Score: ${score}%`);
 
-      // 4. Navigate back
-      setCurrentPage('lesson-view');
-      setActiveExamLessonId(null);
+      // 4. Navigate to Results View
+      // We pass the lesson ID as a pseudo exam ID to trigger unit-specific result display
+      setActiveExamLessonId(activeExamLessonId);
+      setCurrentPage('dashboard'); // Temporary, will guide to result if possible
+      // Actually navigate to result
+      setCurrentPage('exam-result');
+      // Force refresh of courses/enrollment data
+      window.dispatchEvent(new Event('refresh-progress'));
 
       // Force refresh of courses/enrollment data via useEffect dependency or implicit reload
     } catch (error) {
@@ -424,23 +455,20 @@ const AppContent: React.FC = () => {
             </button>
           </header>
           <main className="flex-1 overflow-y-auto custom-scrollbar">
-            {(currentPage === 'lessons-list' || !activeCourseId || activeCourseId === 'preview-mode') ? (
-              <LessonsList
-                onSelectLesson={(courseId: string, lessonId: string) => {
-                  setActiveCourseId(courseId);
-                  setActiveLessonId(lessonId);
-                  setCurrentPage('lesson-view');
-                }}
-                onBack={() => setView('landing')}
-              />
-            ) : (
-              <LessonView
-                courseId={activeCourseId}
-                initialLessonId={activeLessonId}
+            {currentPage === 'topic-view' ? (
+              <TopicExplanationView
+                topicId={activeTopicId!}
                 onBack={() => {
                   setCurrentPage('lessons-list');
-                  setActiveLessonId(null);
                 }}
+              />
+            ) : (
+              <LessonsList
+                onSelectTopic={(topicId: string) => {
+                  setActiveTopicId(topicId);
+                  setCurrentPage('topic-view');
+                }}
+                onBack={() => setView('landing')}
               />
             )}
           </main>
@@ -462,6 +490,7 @@ const AppContent: React.FC = () => {
         return (
           <Dashboard
             role={role!}
+            courses={courses}
             onNavigate={(page, cId, lId) => {
               setCurrentPage(page);
               if (cId) setActiveCourseId(cId);
@@ -490,12 +519,8 @@ const AppContent: React.FC = () => {
           course={activeCourse}
           previewMode={isPreviewMode}
           onBack={() => setCurrentPage('content')}
-          onStartLesson={(lessonId) => { // Updated to accept lessonId
-            // This needs to update the LAST ACCESSED lesson or just navigate to view?
-            // Since App.tsx has "activeCourseId", LessonView figures out which lesson to show...
-            // LessonView logic tries to find "last_accessed_lesson_id".
-            // We should update that in DB first? Or pass it to LessonView?
-            // Simplest: Update DB then navigate.
+          onStartLesson={(lessonId) => {
+            setLessonBackTarget('course-details');
             const updateLastAccessed = async () => {
               if (activeCourse && user && lessonId) {
                 await supabase.from('enrollments').update({
@@ -506,11 +531,29 @@ const AppContent: React.FC = () => {
             };
             updateLastAccessed();
           }}
+          onTakeExam={(lessonId) => {
+            setActiveExamLessonId(lessonId);
+            setCurrentPage('unit-exam');
+          }}
         />;
       case 'exams':
         return <ExamList role={role!} onTakeExam={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-taker'); }} onViewResults={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} />;
       case 'exam-result':
-        return <ResultView onBack={() => setCurrentPage('exams')} examId={activeExamId} resultId={activeResultId} />;
+        const rExamId = activeExamLessonId ? `unit-${activeExamLessonId}` : activeExamId;
+        return (
+          <ResultView
+            onBack={() => {
+              if (activeExamLessonId) {
+                setCurrentPage('lesson-view');
+                setActiveExamLessonId(null);
+              } else {
+                setCurrentPage('exams');
+              }
+            }}
+            examId={rExamId}
+            resultId={activeResultId}
+          />
+        );
       case 'analysis':
         return <Analysis standalone={true} />;
       case 'settings':
@@ -518,12 +561,20 @@ const AppContent: React.FC = () => {
       case 'lessons-list':
         return (
           <LessonsList
-            onSelectLesson={(courseId: string, lessonId: string) => {
-              setActiveCourseId(courseId);
-              setActiveLessonId(lessonId);
-              setCurrentPage('lesson-view');
+            onSelectTopic={(topicId: string) => {
+              setActiveTopicId(topicId);
+              setCurrentPage('topic-view');
             }}
             onBack={() => setCurrentPage('dashboard')}
+          />
+        );
+      case 'topic-view':
+        return (
+          <TopicExplanationView
+            topicId={activeTopicId!}
+            onBack={() => {
+              setCurrentPage('lessons-list');
+            }}
           />
         );
       case 'lesson-view':
@@ -532,7 +583,7 @@ const AppContent: React.FC = () => {
             courseId={activeCourseId!}
             initialLessonId={activeLessonId}
             onBack={() => {
-              setCurrentPage(activeCourseId ? 'course-details' : 'lessons-list');
+              setCurrentPage(lessonBackTarget);
               setActiveLessonId(null);
             }}
             onTakeExam={(lessonId) => {
@@ -546,11 +597,20 @@ const AppContent: React.FC = () => {
           />
         );
       case 'unit-exam':
+        const currentCourse = courses.find(c => c.id === activeCourseId);
+        const lessonProgressMap = currentCourse?.lesson_progress || {};
+        const activeUnitProgress = lessonProgressMap[activeExamLessonId!];
+
         return (
           <ExamTaker
             onExit={() => { setCurrentPage('lesson-view'); setActiveExamLessonId(null); }}
             onComplete={handleUnitExamComplete}
-            examData={{ title: 'Unit Knowledge Assessment' }}
+            examData={{
+              title: 'Unit Knowledge Assessment',
+              initialAnswers: activeUnitProgress?.quiz_answers,
+              questions: UNIT_EXAMS[activeExamLessonId!] || [],
+              isCompleted: activeUnitProgress?.quiz_score !== undefined && activeUnitProgress.quiz_score >= 50
+            }}
           />
         );
       case 'payment':

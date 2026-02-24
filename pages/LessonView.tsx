@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/contexts/AuthContext';
+import { RICH_LESSONS_CONTENT } from '../src/data/rich_lessons';
 
 interface LessonViewProps {
   onBack: () => void;
@@ -20,6 +21,14 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
 
   // Ref for scroll tracking
   const mainRef = React.useRef<HTMLDivElement>(null);
+  const [canComplete, setCanComplete] = useState(false);
+
+  useEffect(() => {
+    // Reset and delay completion check when lesson changes to avoid accidental mount triggers
+    setCanComplete(false);
+    const timer = setTimeout(() => setCanComplete(true), 1500);
+    return () => clearTimeout(timer);
+  }, [currentLesson?.id]);
 
   useEffect(() => {
     fetchLessonData();
@@ -137,6 +146,16 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
       }
 
       console.log('Final lesson plan:', lessonToLoad?.title || 'NONE FOUND');
+
+      // FALLBACK: If we have a high-quality local version of this lesson, Use it!
+      // This bypasses any DB permission issues during the 'rebuild' phase.
+      if (lessonToLoad && RICH_LESSONS_CONTENT[lessonToLoad.id]) {
+        lessonToLoad = {
+          ...lessonToLoad,
+          content: RICH_LESSONS_CONTENT[lessonToLoad.id]
+        };
+      }
+
       setCurrentLesson(lessonToLoad);
 
       // Async update last accessed (fire and forget)
@@ -245,17 +264,6 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
     }
   };
 
-  const handleScroll = () => {
-    if (!mainRef.current || !currentLesson || !enrollment) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = mainRef.current;
-
-    // Check if scrolled to the bottom (within a 50px threshold for usability)
-    if (scrollTop + clientHeight >= scrollHeight - 50) {
-      handleMarkAsRead();
-    }
-  };
-
 
 
   // Removed legacy handleMarkAsRead and handleTakeQuiz as they are replaced/automated
@@ -325,14 +333,13 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
 
       <main
         ref={mainRef}
-        onScroll={handleScroll}
         className="flex-1 overflow-y-auto custom-scrollbar pb-32 w-full"
       >
         <div className="max-w-3xl mx-auto">
           <header className="px-5 pt-12 pb-4">
-            <div className="flex items-center gap-2 text-slate-600 text-xs mb-3 font-bold uppercase">
-              <span className="material-symbols-outlined text-sm font-bold">auto_stories</span>
-              <span>Unit Lesson</span>
+            <div className="flex items-center gap-2 text-brand-500 text-xs mb-3 font-black uppercase tracking-widest">
+              <span className="material-symbols-outlined text-sm font-black">auto_stories</span>
+              <span>{courseId && courseId !== 'preview-mode' ? 'Unit Content' : 'Subject Explanation'}</span>
             </div>
             <h1 className="text-3xl font-black leading-tight tracking-tight mb-2 text-slate-900 uppercase">
               {currentLesson.title}
@@ -364,40 +371,60 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
                 </div>
               )}
 
-              {/* Auto-Complete Status Section or Visitor CTA */}
-              <div className="my-12 p-8 bg-slate-50 rounded-3xl border border-slate-200 text-center transition-all">
+              {/* Actions Section */}
+              <div className="my-12 p-10 bg-white rounded-[40px] border-2 border-slate-100 text-center shadow-xl shadow-slate-200/40">
                 {!user ? (
-                  <>
-                    <div className="w-16 h-16 bg-slate-200 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <span className="material-symbols-outlined text-3xl font-bold">person_add</span>
+                  <div className="space-y-6">
+                    <div className="w-20 h-20 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="material-symbols-outlined text-4xl">person_add</span>
                     </div>
-                    <h3 className="font-black text-xl text-slate-900 mb-2">Track Your Progress</h3>
-                    <p className="text-sm text-slate-500 font-medium">Join us today to save your progress, take certification exams, and unlock more advanced topics.</p>
-                  </>
-                ) : enrollment?.lesson_progress?.[currentLesson.id]?.read ? (
-                  <>
-                    <div className="w-16 h-16 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <span className="material-symbols-outlined text-3xl font-bold">done_all</span>
+                    <div>
+                      <h3 className="font-black text-2xl text-slate-900 mb-2 uppercase tracking-tight">Save Your Progress</h3>
+                      <p className="text-slate-500 font-medium max-w-md mx-auto">Join the platform to track your academic journey, take exams, and earn certifications.</p>
                     </div>
-                    <h3 className="font-black text-xl text-slate-900 mb-2">Lesson Completed</h3>
-                    <p className="text-sm text-slate-500 font-medium">You have successfully finished reading this lesson.</p>
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <div className="w-16 h-16 bg-brand-100 text-brand-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
-                      <span className="material-symbols-outlined text-3xl font-bold">arrow_downward</span>
-                    </div>
-                    <h3 className="font-black text-xl text-slate-900 mb-2">Keep Scrolling</h3>
-                    <p className="text-sm text-slate-500 font-medium">Scroll to the absolute bottom of the page to automatically mark this lesson as completed.</p>
-                  </>
+                  <div className="flex flex-col w-full gap-4">
+                    {/* Mark as Read Button */}
+                    <button
+                      onClick={handleMarkAsRead}
+                      disabled={enrollment?.lesson_progress?.[currentLesson.id]?.read}
+                      className={`w-full flex items-center justify-center gap-4 px-10 py-5 rounded-[22px] font-black text-xs uppercase tracking-[0.2em] transition-all
+                          ${enrollment?.lesson_progress?.[currentLesson.id]?.read
+                          ? 'bg-emerald-50 text-emerald-600 border-2 border-emerald-100 cursor-default'
+                          : 'bg-slate-900 text-white shadow-xl shadow-slate-900/30 hover:bg-brand-500 hover:shadow-brand-500/20 active:scale-95'
+                        }`}
+                    >
+                      <span className="material-symbols-outlined font-black">
+                        {enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'verified' : 'task_alt'}
+                      </span>
+                      {enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'Lesson Completed' : 'Mark as Completed'}
+                    </button>
+
+                    {/* Take Practice Exam Button - Restored as per request */}
+                    <button
+                      onClick={() => onTakeExam?.(currentLesson.id, currentLesson.title)}
+                      className="w-full flex items-center justify-center gap-4 px-10 py-5 rounded-[22px] bg-white text-slate-900 border-2 border-slate-200 font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95 shadow-sm"
+                    >
+                      <span className="material-symbols-outlined font-black text-brand-500">quiz</span>
+                      Take Unit Exam
+                    </button>
+
+                    {enrollment?.lesson_progress?.[currentLesson.id]?.read && (
+                      <div className="flex flex-col items-center gap-2 mt-4 animate-fade-in">
+                        <p className="text-emerald-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                          <span className="material-symbols-outlined text-base font-black">check_circle</span>
+                          Progress saved to your academic profile
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-
             </article>
           </div>
         </div>
       </main>
-
     </div>
   );
 };

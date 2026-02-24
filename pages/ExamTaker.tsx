@@ -7,7 +7,7 @@ import { ExamQuestion, Exam } from '../types';
 interface ExamTakerProps {
   onExit: () => void;
   onSubmit?: (resultId?: string) => void;
-  onComplete?: (score: number) => void;
+  onComplete?: (score: number, answers?: Record<number, string>) => void;
   examId?: string | null;
   resultId?: string | null;
   examData?: any;
@@ -35,8 +35,19 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
       setTimeLeft(examData.duration * 60);
       setInitialDuration(examData.duration * 60);
     }
-    setAnswers({});
-  }, [examData, examId]);
+    setAnswers(examData?.initialAnswers || {});
+
+    // For Unit Exams: Load questions from examData if no database examId exists
+    if (!examId && examData?.questions) {
+      setQuestions(examData.questions);
+    }
+
+    // Set Review Mode for Unit Exams if already completed
+    if (!examId && examData?.isCompleted) {
+      setReviewMode(true);
+      setTimeLeft(0);
+    }
+  }, [examData, examId, user]);
 
   useEffect(() => {
     if (!examId) return;
@@ -114,11 +125,12 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
   // ... (timer logic)
 
   const handleFinish = async () => {
-    let score = 100;
+    let score = 0;
+    let correctCount = 0;
+    let incorrectCount = 0;
 
-    if (examId && questions.length > 0 && user) {
-      let correctCount = 0;
-      let incorrectCount = 0;
+    // 1. Calculate Score (Works for both DB exams and Local Unit exams)
+    if (questions.length > 0) {
       questions.forEach((q, idx) => {
         const answer = answers[idx + 1];
         if (answer) {
@@ -130,8 +142,14 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
         }
       });
       score = Math.round((correctCount / questions.length) * 100);
-      const timeSpent = initialDuration - timeLeft;
+    } else {
+      score = 100; // Default fallback
+    }
 
+    const timeSpent = initialDuration - timeLeft;
+
+    // 2. Persist to DB if it's a structural institutional exam
+    if (examId && questions.length > 0 && user) {
       try {
         const { data: resultData, error } = await supabase.from('exam_results').insert({
           user_id: user.id,
@@ -156,8 +174,9 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
       }
     }
 
+    // 3. Callback for local handling (Unit Exams)
     if (onComplete) {
-      onComplete(score);
+      onComplete(score, answers);
     } else if (onSubmit) {
       onSubmit();
     }
@@ -201,9 +220,9 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
     { id: 'D', label: 'Chain Rule' },
   ];
 
-  const activeOptions = examId && currentQData?.options ? currentQData.options : demoOptions;
-  const questionTitle = examId ? (exam?.title || 'Examination') : 'Adv. Mathematics - Midterm';
-  const questionText = examId && currentQData ? currentQData.question_text : 'A student is calculating the derivative of f(x) = sin(x) * cos(x). Which of the following rules should be applied first to find the correct derivative?';
+  const activeOptions = currentQData?.options ? currentQData.options : demoOptions;
+  const questionTitle = examId ? (exam?.title || 'Examination') : (examData?.title || 'Unit Assessment');
+  const questionText = currentQData ? currentQData.question_text : 'A student is calculating the derivative of f(x) = sin(x) * cos(x). Which of the following rules should be applied first to find the correct derivative?';
 
   const progress = (currentQuestion / totalQuestions) * 100;
 
@@ -218,23 +237,40 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
 
   return (
     <div className="flex flex-col h-screen bg-white text-slate-900">
-      <header className="sticky top-0 z-50 bg-slate-50 border-b border-slate-200">
+      <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
         <div className="flex items-center justify-between p-4 pb-2 lg:px-8">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => reviewMode ? onExit() : setIsModalOpen(true)}
-              className="material-symbols-outlined text-slate-600 hover:text-slate-900 transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-90"
             >
-              close
+              <span className="material-symbols-outlined font-black">close</span>
             </button>
-            <div className="hidden lg:block ml-2">
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest block mb-0.5">Examination Mode</span>
-              <h1 className="text-sm font-bold">{questionTitle}</h1>
+            <div className="hidden lg:block">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-0.5">
+                {reviewMode ? 'Assessment Review' : 'Active Evaluation'}
+              </span>
+              <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">{questionTitle}</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-red-500/10 px-3 py-1.5 rounded-full border border-red-500/20">
-            <span className="material-symbols-outlined text-red-600 text-sm">timer</span>
-            <p className="text-red-600 text-sm font-bold tracking-tight">{formatTime(timeLeft)}</p>
+
+          <div className={`flex items-center gap-3 px-6 py-2.5 rounded-2xl border-2 transition-all ${reviewMode
+            ? 'bg-emerald-50 border-emerald-100 text-emerald-600'
+            : timeLeft < 300
+              ? 'bg-red-50 border-red-100 text-red-600 animate-pulse'
+              : 'bg-slate-50 border-slate-100 text-slate-900'
+            }`}>
+            <span className="material-symbols-outlined text-xl font-black">
+              {reviewMode ? 'verified' : 'timer'}
+            </span>
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black uppercase tracking-widest leading-none mb-1 opacity-60">
+                {reviewMode ? 'Status' : 'Remaining Time'}
+              </span>
+              <p className="text-sm font-black tracking-widest leading-none">
+                {reviewMode ? 'COMPLETED' : formatTime(timeLeft)}
+              </p>
+            </div>
           </div>
         </div>
         <div className="px-4 pb-3 pt-1 lg:px-8">
@@ -254,8 +290,8 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <span className="text-brand-500 text-xs font-bold uppercase tracking-widest">Question {currentQuestion} of {totalQuestions}</span>
-                <h2 className="text-2xl lg:text-3xl font-bold leading-tight text-slate-900 uppercase">
-                  {examId ? `Question ${currentQuestion}` : 'Derivative calculation for trigonometric functions'}
+                <h2 className="text-2xl lg:text-3xl font-black leading-tight text-slate-900 uppercase tracking-tight">
+                  Question {currentQuestion}
                 </h2>
               </div>
               <button className="p-2 rounded-full hover:bg-slate-100 text-slate-500">
