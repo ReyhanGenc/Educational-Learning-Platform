@@ -12,11 +12,11 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogout }) => {
   const { userMetadata } = useAuth();
-  const isStudent = role === UserRole.STUDENT;
+  const isInstructor = role === UserRole.INSTRUCTOR;
 
-  const displayName = userMetadata?.full_name || (isStudent ? 'Student' : 'Instructor');
+  const displayName = userMetadata?.full_name || (isInstructor ? 'Instructor' : 'Student');
 
-  const navItems = isStudent ? [
+  const navItems = !isInstructor ? [
     { id: 'dashboard', label: 'Home', icon: 'home' },
     { id: 'content', label: 'Courses', icon: 'auto_stories' },
     { id: 'exams', label: 'Exams', icon: 'quiz' },
@@ -79,7 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, currentPage, onNavigate, onLogo
                 {displayName}
               </p>
               <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest truncate">
-                {isStudent ? 'UG Student' : 'Senior Faculty'}
+                {!isInstructor ? 'UG Student' : 'Senior Faculty'}
               </p>
             </div>
           </div>

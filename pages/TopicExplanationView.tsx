@@ -1,6 +1,7 @@
 
-import React from 'react';
-import { StandaloneTopic, STANDALONE_TOPICS } from '../src/data/standalone_topics';
+import React, { useState, useEffect } from 'react';
+import { StandaloneTopic } from '../src/data/standalone_topics';
+import { supabase } from '../src/lib/supabase';
 
 interface TopicExplanationViewProps {
     topicId: string;
@@ -8,7 +9,53 @@ interface TopicExplanationViewProps {
 }
 
 const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, onBack }) => {
-    const topic = STANDALONE_TOPICS.find(t => t.id === topicId);
+    const [topic, setTopic] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchTopic = async () => {
+            // Fetch strictly from Supabase as requested
+            try {
+                setLoading(true);
+                const { data, error } = await supabase
+                    .from('lessons')
+                    .select('*, chapters(title, courses(id, title, category, image))')
+                    .eq('id', topicId)
+                    .maybeSingle();
+
+                if (error) throw error;
+
+                if (data) {
+                    const chapter = Array.isArray(data.chapters) ? data.chapters[0] : data.chapters;
+                    const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
+
+                    setTopic({
+                        id: data.id,
+                        title: data.title,
+                        category: course?.category || 'Educational',
+                        content: data.content,
+                        content_blocks: data.content_blocks,
+                        courseTitle: course?.title
+                    });
+                }
+            } catch (err) {
+                console.error('Error fetching topic from DB:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchTopic();
+    }, [topicId]);
+
+    if (loading) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center p-10 bg-slate-50 min-h-[400px]">
+                <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Fetching Topic...</p>
+            </div>
+        );
+    }
 
     if (!topic) {
         return (
@@ -36,7 +83,7 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
                     <header className="px-5 pt-32 pb-4">
                         <div className="flex items-center gap-2 text-brand-500 text-xs mb-3 font-black uppercase tracking-widest">
                             <span className="material-symbols-outlined text-sm font-black">menu_book</span>
-                            <span>Subject Explanation</span>
+                            <span>{topic.courseTitle ? `${topic.courseTitle} • ` : ''}Subject Explanation</span>
                         </div>
                         <h1 className="text-4xl font-black leading-tight tracking-tight mb-2 text-slate-900 uppercase">
                             {topic.title}
@@ -51,7 +98,21 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
                 prose-ul:list-disc prose-ul:pl-6 prose-li:marker:text-brand-500
                 prose-blockquote:border-l-4 prose-blockquote:border-brand-500 prose-blockquote:bg-slate-50 prose-blockquote:py-2 prose-blockquote:px-6 prose-blockquote:rounded-r-lg prose-blockquote:not-italic
                 ">
-                            <div dangerouslySetInnerHTML={{ __html: topic.content }} />
+                            {topic.content_blocks && Array.isArray(topic.content_blocks) ? (
+                                <div className="space-y-8">
+                                    {topic.content_blocks.map((block: any) => (
+                                        block.type === 'text' ? (
+                                            <div key={block.id} className="text-slate-700 leading-relaxed font-medium" dangerouslySetInnerHTML={{ __html: block.content }} />
+                                        ) : (
+                                            <div key={block.id} className="rounded-[32px] overflow-hidden shadow-2xl border border-slate-200 my-8">
+                                                <img src={block.content} className="w-full h-auto object-cover" alt="Topic Visual" />
+                                            </div>
+                                        )
+                                    ))}
+                                </div>
+                            ) : (
+                                <div dangerouslySetInnerHTML={{ __html: topic.content }} />
+                            )}
                         </article>
 
                         {/* Visual CTA for Standalone Topics */}
@@ -61,7 +122,7 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
                             </div>
                             <h3 className="font-black text-2xl text-slate-900 mb-2 uppercase tracking-tight">Expand Your Knowledge</h3>
                             <p className="text-slate-600 font-medium max-w-md mx-auto mb-8 text-sm">
-                                This is a standalone topic explanation. To unlock full courses, certified exams, and technical assessments, visit our course catalog.
+                                This is a specialized subject explanation. To unlock full courses, certified exams, and technical assessments, visit our course catalog.
                             </p>
                         </div>
                     </div>

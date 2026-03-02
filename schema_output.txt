@@ -1,0 +1,4 @@
+﻿profiles.id EXISTS.
+profiles.full_name EXISTS.
+profiles.role EXISTS.
+profiles.user_role does not exist: column profiles.user_role does not exist

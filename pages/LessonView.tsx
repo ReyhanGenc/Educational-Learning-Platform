@@ -355,7 +355,19 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
                 prose-ul:list-disc prose-ul:pl-6 prose-li:marker:text-brand-500
                 prose-blockquote:border-l-4 prose-blockquote:border-brand-500 prose-blockquote:bg-slate-50 prose-blockquote:py-2 prose-blockquote:px-6 prose-blockquote:rounded-r-lg prose-blockquote:not-italic
                 ">
-                {currentLesson.content ? (
+                {currentLesson.content_blocks && Array.isArray(currentLesson.content_blocks) ? (
+                  <div className="space-y-8">
+                    {currentLesson.content_blocks.map((block: any) => (
+                      block.type === 'text' ? (
+                        <div key={block.id} className="text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: block.content }} />
+                      ) : (
+                        <div key={block.id} className="rounded-[32px] overflow-hidden shadow-2xl border border-slate-200">
+                          <img src={block.content} className="w-full h-auto object-cover" alt="Lesson Visual" />
+                        </div>
+                      )
+                    ))}
+                  </div>
+                ) : currentLesson.content ? (
                   <div dangerouslySetInnerHTML={{ __html: currentLesson.content }} />
                 ) : (
                   <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl text-center">

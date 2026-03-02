@@ -28,7 +28,7 @@ import { mockExams } from './pages/ExamList';
 import { supabase } from './src/lib/supabase';
 
 const AppContent: React.FC = () => {
-  const { user, role, signOut, signIn, signUp } = useAuth();
+  const { user, role, loading: authLoading, signOut, signIn, signUp } = useAuth();
   const [view, setView] = useState<'landing' | 'login' | 'register' | 'pricing' | 'app' | 'public-lessons'>('landing');
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
@@ -48,7 +48,8 @@ const AppContent: React.FC = () => {
   // Fetch user data and courses
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      // Only show global loading on initial load or if we have no data
+      if (courses.length === 0) setLoading(true);
       try {
         // 1. Fetch available courses with nested chapters and lessons count
         const { data: coursesData, error: coursesError } = await supabase
@@ -161,12 +162,6 @@ const AppContent: React.FC = () => {
     fetchData();
   }, [user, currentPage]); // Re-fetch when page changes to ensure data is fresh, especially after return from payment
 
-  // Auto-switch to app if user is signed in
-  useEffect(() => {
-    if (user) {
-      setView('app');
-    }
-  }, [user]);
 
   const addToCart = (course: Course) => {
     // 1. Check if already purchased
@@ -285,7 +280,11 @@ const AppContent: React.FC = () => {
         setCurrentPage('dashboard');
       }
     } catch (error: any) {
-      alert(error.message);
+      if (error.message === "Email not confirmed") {
+        alert("Giriş yapabilmeniz için e-posta adresinizi doğrulamanız gerekmektedir. Lütfen gelen kutunuzu (ve gerekiyorsa spam klasörünü) kontrol edip onay linkine tıklayın.");
+      } else {
+        alert(error.message);
+      }
     }
   };
 
@@ -409,6 +408,26 @@ const AppContent: React.FC = () => {
       setCurrentPage('lesson-view');
     }
   };
+
+  // Only show global loading screen if we are totally fresh and have no user session yet.
+  // If we have a user, we stay in the app and let sub-components handle their own loading states.
+  if ((loading || authLoading) && !user) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 bg-brand-500 rounded-xl flex items-center justify-center text-white animate-bounce shadow-xl shadow-brand-500/20">
+            <span className="material-symbols-outlined text-[28px]">school</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+            <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+            <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
+          </div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Syncing Environment...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'landing') {
     return (

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { STANDALONE_TOPICS } from '../src/data/standalone_topics';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { supabase } from '../src/lib/supabase';
 
 interface LessonsListProps {
   onSelectTopic: (topicId: string) => void;
@@ -10,9 +11,61 @@ const LessonsList: React.FC<LessonsListProps> = ({ onSelectTopic, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('All Topics');
   const [currentPage, setCurrentPage] = useState(0);
+  const [dbLessons, setDbLessons] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const itemsPerPage = 6;
 
-  const lessons = STANDALONE_TOPICS;
+  useEffect(() => {
+    const fetchLessons = async () => {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('lessons')
+          .select('*, chapters(title, courses(id, title, category, image))')
+          .limit(50); // Fetch a good sample
+
+        if (error) throw error;
+
+        if (data) {
+          const mapped = data.map((item: any) => {
+            const chapter = Array.isArray(item.chapters) ? item.chapters[0] : item.chapters;
+            const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
+
+            // Extract a summary from content blocks if available
+            let description = '';
+            if (item.content_blocks && Array.isArray(item.content_blocks)) {
+              const textBlock = item.content_blocks.find((b: any) => b.type === 'text');
+              if (textBlock) {
+                // Strip HTML for the short description
+                description = textBlock.content.replace(/<[^>]*>/g, '').substring(0, 160) + '...';
+              }
+            }
+
+            return {
+              id: item.id,
+              title: item.title,
+              category: course?.category || 'Educational',
+              image: course?.image || `https://picsum.photos/seed/${item.id}/1200/800`,
+              description: description || `Subject lesson from the ${course?.title || 'academic'} course.`,
+              courseTitle: course?.title
+            };
+          });
+          setDbLessons(mapped);
+        }
+      } catch (err) {
+        console.error('Error fetching lessons for list:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLessons();
+  }, []);
+
+  const lessons = useMemo(() => {
+    // Only use database lessons as requested by the user
+    return dbLessons;
+  }, [dbLessons]);
 
   // Extract unique topics (categories) for the filter
   const topics = useMemo(() => {
@@ -102,7 +155,12 @@ const LessonsList: React.FC<LessonsListProps> = ({ onSelectTopic, onBack }) => {
 
       {/* Grid Display */}
       <div className="flex-1">
-        {paginatedLessons.length > 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-96">
+            <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Loading Subject Explanations...</p>
+          </div>
+        ) : paginatedLessons.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-10">
             {paginatedLessons.map((lesson) => (
               <div

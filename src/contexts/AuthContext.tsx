@@ -61,7 +61,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
 
                 setUser(session.user);
-                fetchUserProfile(session.user.id);
+                // Optimistically set role from metadata 
+                const metaRole = session.user.user_metadata?.role;
+                if (metaRole) {
+                    setRole(metaRole.toLowerCase() === 'instructor' ? UserRole.INSTRUCTOR : UserRole.STUDENT);
+                }
+
+                fetchUserProfile(session.user.id, session.user.user_metadata?.role);
             } else {
                 setLoading(false);
             }
@@ -71,32 +77,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (_event === 'SIGNED_OUT') {
                 localStorage.removeItem('remember_me');
+                localStorage.removeItem('user_role'); // Clear role persistence
                 sessionStorage.removeItem('temp_session');
                 setUser(null);
                 setRole(null);
                 setLoading(false);
             } else if (session?.user) {
-                // Also check persistence here for initial load race condition
                 const isRemembered = localStorage.getItem('remember_me');
                 const isTempSession = sessionStorage.getItem('temp_session');
 
-                if (!isRemembered && !isTempSession) {
-                    // This block catches the case where onAuthStateChange fires before getSession above finishes
-                    // and we have a persisted session but shouldn't have.
-                    // However, we need to be careful not to sign out a valid login event.
-                    if (_event === 'INITIAL_SESSION') {
-                        supabase.auth.signOut();
-                        setUser(null);
-                        setRole(null);
-                        setLoading(false);
-                        return;
-                    }
-                    // If it's a SIGNED_IN event (manual login), we set temp_session in signIn function, so it's fine.
-                    // But if user refreshes page, event is usually INITIAL_SESSION or TOKEN_REFRESHED.
+                if (!isRemembered && !isTempSession && _event === 'INITIAL_SESSION') {
+                    supabase.auth.signOut();
+                    setUser(null);
+                    setRole(null);
+                    setLoading(false);
+                    return;
                 }
 
                 setUser(session.user);
-                fetchUserProfile(session.user.id);
+
+                // Deeply check metadata for role
+                const metadata = session.user.user_metadata || {};
+                const metaRole = metadata.role || metadata.user_role || metadata.role_name;
+
+                console.log('--- AUTH UPDATE ---');
+                console.log('Event:', _event);
+                console.log('User Metadata:', metadata);
+                console.log('Detected MetaRole:', metaRole);
+
+                // Persisted role fallback (useful right after registration)
+                const persistedRole = localStorage.getItem('user_role') as UserRole;
+
+                // Optimistically set role
+                if (metaRole) {
+                    const resolved = metaRole.toLowerCase().includes('instructor') ? UserRole.INSTRUCTOR : UserRole.STUDENT;
+                    setRole(resolved);
+                    console.log('Setting optimistic role from metadata:', resolved);
+                } else if (persistedRole) {
+                    setRole(persistedRole);
+                    console.log('Setting optimistic role from persistence:', persistedRole);
+                }
+
+                fetchUserProfile(session.user.id, metaRole);
             } else {
                 setRole(null);
                 setLoading(false);
@@ -106,68 +128,98 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return () => subscription.unsubscribe();
     }, []);
 
-    const fetchUserProfile = async (userId: string) => {
+    const fetchUserProfile = async (userId: string, metadataRole?: string) => {
+        // CRITICAL: Only show global loading if we have NO user and NO role yet.
+        // If we already have a session, we must NEVER toggle global loading to true
+        // as it causes the entire app to unmount via {!loading && children}.
+        if (!user && !role) setLoading(true);
+        console.log('--- ROLE RESOLUTION START ---');
         try {
+            // Priority 1: Check localStorage first for immediate arayüz response
+            const persistedRole = localStorage.getItem('user_role') as UserRole;
+
+            // Priority 2: Check metadata hint
+            const metaRoleResolved = (metadataRole?.toLowerCase().includes('instructor')) ? UserRole.INSTRUCTOR : UserRole.STUDENT;
+
+            // Optimistic setting
+            const bestGuess = (persistedRole === UserRole.INSTRUCTOR || metaRoleResolved === UserRole.INSTRUCTOR) ? UserRole.INSTRUCTOR : UserRole.STUDENT;
+            console.log('Best optimistic guess:', bestGuess);
+            setRole(bestGuess);
+
+            // Priority 3: Fetch from DB (Discovering columns with *)
             const { data, error } = await supabase
                 .from('profiles')
-                .select('role')
+                .select('*')
                 .eq('id', userId)
-                .single();
+                .maybeSingle();
 
-            if (!error && data) {
-                // Map database role string to UserRole enum (assuming they match somewhat)
-                // If DB role is 'student' -> UserRole.STUDENT, etc.
-                const dbRole = data.role.toLowerCase() === 'instructor' ? UserRole.INSTRUCTOR : UserRole.STUDENT;
-                setRole(dbRole);
+            if (data) {
+                console.log('DB Profile data found:', data);
+                // Look for common role column names
+                const dbRoleValue = (data.role || data.user_role || data.role_name || '').toString().toLowerCase();
+                if (dbRoleValue.includes('instructor')) {
+                    console.log('Confirmed INSTRUCTOR from DB.');
+                    setRole(UserRole.INSTRUCTOR);
+                    localStorage.setItem('user_role', UserRole.INSTRUCTOR);
+                } else if (dbRoleValue.includes('student')) {
+                    // Only override to student if metadata doesn't strongly suggest instructor
+                    if (metaRoleResolved !== UserRole.INSTRUCTOR) {
+                        console.log('Confirmed STUDENT from DB.');
+                        setRole(UserRole.STUDENT);
+                        localStorage.setItem('user_role', UserRole.STUDENT);
+                    } else {
+                        console.log('DB says student but metadata says instructor. Trusting metadata.');
+                    }
+                }
+            } else if (error) {
+                console.warn('DB Fetch Error (possibly no profile yet):', error);
             }
+
+            // If we are instructor but DB is empty/wrong, try a MINIMAL sync
+            if (bestGuess === UserRole.INSTRUCTOR) {
+                try {
+                    // Try to update just 'id' and 'role' - most likely to exist
+                    await supabase.from('profiles').upsert({ id: userId, role: 'instructor' });
+                } catch (e) {
+                    console.log('Silent DB sync failed:', e);
+                }
+            }
+
         } catch (error) {
-            console.error('Error fetching profile:', error);
+            console.error('Fatal role resolution error:', error);
         } finally {
             setLoading(false);
+            console.log('--- ROLE RESOLUTION END ---');
         }
     };
 
     const signIn = async (email: string, password: string, selectedRole: UserRole, rememberMe: boolean = false) => {
-        // Set persistence based on rememberMe
-        // 'local' = persist even after closing tab (default)
-        // 'session' = clear after closing tab
-        await supabase.auth.setSession({
-            access_token: '', // Placeholder, logic below handles auth
-            refresh_token: ''
-        }); // This is just to access the setPersistence method if needed, but standard way is below
+        // Set optimistic role in localStorage to bridge the gap during redirect/reload
+        localStorage.setItem('user_role', selectedRole);
+        setRole(selectedRole);
 
-        // Actually, Supabase handles persistence via client options or per-request
-        // But for this client-side library, we can set it before sign in
-        /* 
-           Note: changing persistence on the fly is tricky with the single client instance.
-           A better approach for a simple app:
-           Supabase defaults to 'local' storage. 
-           To make it session-only, we'd need to configure the client that way.
-           
-           Since the client is already initialized in `supabase.ts`, we can't easily change it here 
-           without re-initializing or using advanced storage adapters.
-           
-           HOWEVER, we can mimic "Sign out on close" by using `sessionStorage` vs `localStorage`.
-           Supabase JS uses `localStorage` by default.
-        */
-
-        // Workaround: We will let Supabase do its thing, but if rememberMe is FALSE,
-        // we might want to manually clear session on window close, but that's unreliable.
-
-        // Correct way with Supabase v2:
-        // We can't change persistence per login easily with one global client.
-        // But we can check `rememberMe` and decide whether to sign out on `window.onbeforeunload`.
-        // OR better: Update the login call? No, signInWithPassword doesn't take persistence.
-
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
         });
 
-        if (error) throw error;
+        if (error) {
+            localStorage.removeItem('user_role');
+            throw error;
+        }
+
+        if (data.user) {
+            // Check metadata immediately to confirm if the selection was correct
+            const metadata = data.user.user_metadata || {};
+            const metaRole = metadata.role || metadata.user_role;
+            if (metaRole) {
+                const resolved = metaRole.toLowerCase().includes('instructor') ? UserRole.INSTRUCTOR : UserRole.STUDENT;
+                setRole(resolved);
+                localStorage.setItem('user_role', resolved);
+            }
+        }
 
         if (!rememberMe) {
-            // If not remembering, we can set a flag in sessionStorage
             sessionStorage.setItem('temp_session', 'true');
         } else {
             sessionStorage.removeItem('temp_session');
@@ -176,18 +228,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signUp = async (email: string, password: string, fullName: string, role: UserRole) => {
-        const { error } = await supabase.auth.signUp({
+        const roleStr = role === UserRole.INSTRUCTOR ? 'instructor' : 'student';
+
+        // Store in localStorage so even across confirmation/sign-in we remember what they picked
+        localStorage.setItem('user_role', role);
+
+        const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
                 data: {
                     full_name: fullName,
-                    role: role === UserRole.INSTRUCTOR ? 'instructor' : 'student',
+                    role: roleStr,
                 },
             },
         });
 
-        if (error) throw error;
+        if (error) {
+            localStorage.removeItem('user_role');
+            throw error;
+        }
+
+        // Try to create profile if user is instantly active
+        if (data.user) {
+            try {
+                // Minimalist upsert to prevent 400 errors from non-existent columns
+                // We'll try to include full_name but wrap it in individual try/catches if needed
+                await supabase.from('profiles').upsert({
+                    id: data.user.id,
+                    role: roleStr,
+                    full_name: fullName
+                });
+            } catch (profileError) {
+                console.warn('Initial profile sync failed:', profileError);
+            }
+        }
     };
 
     const signOut = async () => {
@@ -279,7 +354,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return (
         <AuthContext.Provider value={{ user, userMetadata, role, loading, signIn, signUp, signOut, updateProfile, resetProgress }}>
-            {!loading && children}
+            {children}
         </AuthContext.Provider>
     );
 };

@@ -15,7 +15,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, cartCount = 0, onOpenCart }) => {
   const { user, userMetadata } = useAuth();
-  const isStudent = role === UserRole.STUDENT;
+  const isInstructor = role === UserRole.INSTRUCTOR;
 
   // Real Data State
   const [loading, setLoading] = useState(true);
@@ -46,13 +46,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
   ];
 
   useEffect(() => {
-    if (isStudent && user) {
+    if (!isInstructor && user) {
       fetchStudentData();
       fetchRecentLessons();
-    } else if (!isStudent) {
+    } else if (isInstructor) {
       setLoading(false); // Instructor view uses mock for now
     }
-  }, [user, isStudent, courses]);
+  }, [user, isInstructor, courses]);
 
   const fetchRecentLessons = async () => {
     try {
@@ -189,7 +189,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
     );
   }
 
-  if (!isStudent) {
+  if (isInstructor) {
     return (
       <div className="min-h-full p-6 lg:p-10 space-y-12 animate-fade-in max-w-[1600px] mx-auto pb-24">
         <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
@@ -199,7 +199,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
               Faculty Dashboard
             </div>
             <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight leading-tight uppercase">
-              Welcome back, Prof. Smith!
+              Welcome back, {userMetadata?.full_name || 'Instructor'}!
             </h1>
             <p className="text-slate-700 font-medium text-base">
               Overall institutional engagement is up <span className="text-emerald-700 font-bold">+8.2% this term</span>
@@ -374,8 +374,8 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
             </div>
           </div>
 
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={400}>
               <BarChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '700', fill: '#475569' }} dy={15} />
@@ -402,8 +402,8 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
             <p className="text-slate-400 text-[10px] uppercase tracking-[0.25em] mt-1">Institutional Skill Index</p>
           </div>
 
-          <div className="flex-1 w-full h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[320px] w-full min-h-[320px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}>
               <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                 <PolarGrid stroke="rgba(255,255,255,0.1)" />
                 <PolarAngleAxis dataKey="subject" tick={{ fontSize: 9, fontWeight: '700', fill: 'rgba(255,255,255,0.6)' }} />
