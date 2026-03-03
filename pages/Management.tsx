@@ -41,12 +41,16 @@ const Management: React.FC = () => {
   const [courseImage, setCourseImage] = useState<string | null>(null);
   const [lessonImage, setLessonImage] = useState<string | null>(null);
   const [courseChapters, setCourseChapters] = useState<Chapter[]>([]);
+  const [coursePrice, setCoursePrice] = useState<string>('0.00');
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [lessonBlocks, setLessonBlocks] = useState<ContentBlock[]>([]);
   const [examQuestions, setExamQuestions] = useState<Question[]>([]);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
   const [currentModalQuestion, setCurrentModalQuestion] = useState<Partial<Question>>({});
+  const [currentExamQuestionIndex, setCurrentExamQuestionIndex] = useState(0);
+  const [preExamView, setPreExamView] = useState<ManagementView>('list');
+  const [examCreatedStatus, setExamCreatedStatus] = useState<{ success: boolean; questionsCount: number; chapterIndex: number } | null>(null);
 
   const { user, userMetadata } = useAuth();
   const instructorName = userMetadata?.full_name || 'Anonymous Instructor';
@@ -63,33 +67,43 @@ const Management: React.FC = () => {
   const fetchData = async () => {
     if (!user) return;
     setLoading(true);
+    const userId = user?.id;
     try {
+      console.log('Fetching management data for:', { userId, instructorName });
+
       if (activeTab === 'courses') {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('courses')
-          .select('*')
-          .eq('instructor', instructorName)
+          .select('*, chapters(id, lessons(id))')
+          .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`)
           .order('created_at', { ascending: false });
+
+        if (error) console.error('Error fetching courses:', error);
         setRealCourses(data || []);
       } else if (activeTab === 'exams') {
         const { data, error } = await supabase
           .from('exams')
           .select('*')
-          .eq('instructor', instructorName)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
-        if (error && (error.code === 'PGRST116' || error.message.includes('column'))) { // Column not found fallback
-          const { data: allData } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
-          setRealExams(allData || []);
+        if (error) {
+          console.error('Error fetching exams:', error);
+          // Fallback to all exams if user_id filter fails for some reason
+          const { data: all } = await supabase.from('exams').select('*').limit(20);
+          setRealExams(all || []);
         } else {
           setRealExams(data || []);
         }
       } else if (activeTab === 'lessons') {
-        const { data } = await supabase
+        // Lessons filter is complex because it depends on joined tables
+        const { data, error } = await supabase
           .from('lessons')
-          .select('*, chapters!inner(title, courses!inner(title, instructor))')
-          .eq('chapters.courses.instructor', instructorName)
+          .select('*, chapters!inner(title, courses!inner(title, instructor, user_id))')
+          .or(`user_id.eq.${userId},chapters.courses.instructor.eq."${instructorName}",chapters.courses.user_id.eq.${userId}`)
           .order('created_at', { ascending: false });
+
+        if (error) console.error('Error fetching lessons:', error);
         setRealLessons(data || []);
       }
     } catch (err) {
@@ -132,9 +146,27 @@ const Management: React.FC = () => {
       setCourseChapters([{ id: 'ch-new', title: 'Chapter 1: New Chapter', blocks: [{ id: 'b-new', type: 'text', content: '' }] }]);
       setActiveChapterIndex(0);
       setCourseImage(null);
+      setCoursePrice('0.00');
+      setExamCreatedStatus(null);
       setView('create-course');
     } else if (type === 'exam') {
-      setExamQuestions([]);
+      setPreExamView(view); // Store where we came from
+      const defaultQuestion: Question = {
+        id: `q-${Date.now()}`,
+        type: 'multiple-choice',
+        text: '',
+        points: 1,
+        difficulty: 'Medium',
+        options: [
+          { id: 'A', text: '' },
+          { id: 'B', text: '' },
+          { id: 'C', text: '' },
+          { id: 'D', text: '' }
+        ],
+        correctOptionId: 'A'
+      };
+      setExamQuestions([defaultQuestion]);
+      setCurrentExamQuestionIndex(0);
       setView('create-exam');
     } else if (type === 'lesson') {
       setLessonBlocks([{ id: 'l-new', type: 'text', content: '' }]);
@@ -147,18 +179,30 @@ const Management: React.FC = () => {
     setSelectedItem(item);
     if (type === 'course') {
       setLoading(true);
-      const { data: chs } = await supabase.from('chapters').select('*').eq('course_id', item.id).order('order');
+      const { data: chs, error: chsError } = await supabase.from('chapters').select('*').eq('course_id', item.id).order('order');
+      console.log('Fetched chapters for course:', item.id, chs, chsError);
+
       if (chs && chs.length > 0) {
-        setCourseChapters(chs.map((c: any) => ({ ...c, blocks: c.content_blocks || [] })));
+        setCourseChapters(chs.map((c: any, idx: number) => {
+          let blocks = Array.isArray(c.content_blocks) ? c.content_blocks : [];
+          // If first chapter blocks are empty, fallback to course description
+          if (idx === 0 && blocks.length === 0 && item.description) {
+            blocks = [{ id: 'b-desc', type: 'text', content: item.description }];
+          }
+          return { ...c, blocks };
+        }));
       } else {
         setCourseChapters([{ id: 'ch-new', title: 'Chapter 1: New Chapter', blocks: [{ id: 'b-new', type: 'text', content: '' }] }]);
       }
       setActiveChapterIndex(0);
       setCourseImage(item.image);
+      setCoursePrice(item.price?.toString() || '0.00');
       setLoading(false);
       setView('create-course');
     } else if (type === 'exam') {
+      setPreExamView(view);
       setExamQuestions(item.questions || []);
+      setCurrentExamQuestionIndex(0);
       setView('create-exam');
     } else if (type === 'lesson') {
       setLessonBlocks(item.content_blocks || []);
@@ -168,20 +212,13 @@ const Management: React.FC = () => {
   };
 
   const handleTitleClick = async (item: any, type: 'view-course' | 'view-lesson' | 'view-exam') => {
-    setSelectedItem(item);
     if (type === 'view-course') {
-      setLoading(true);
-      const { data: chs } = await supabase.from('chapters').select('*').eq('course_id', item.id).order('order');
-      setCourseChapters(chs?.map((c: any) => ({ ...c, blocks: c.content_blocks || [] })) || []);
-      setLoading(false);
+      await startEditingArchitect('course', item);
+    } else if (type === 'view-lesson') {
+      await startEditingArchitect('lesson', item);
+    } else if (type === 'view-exam') {
+      await startEditingArchitect('exam', item);
     }
-    if (type === 'view-lesson') {
-      setLessonBlocks(item.content_blocks || []);
-    }
-    if (type === 'view-exam') {
-      setExamQuestions(item.questions || []);
-    }
-    setView(type);
   };
 
   const handleDeleteClick = (itemName: string, itemId: string | number) => {
@@ -271,16 +308,23 @@ const Management: React.FC = () => {
     if (!selectedItem && !courseChapters[0]?.title) return;
     setLoading(true);
     try {
+      // Join all text blocks in the first chapter to preserve data
+      const allText = courseChapters[0]?.blocks
+        .filter(b => b.type === 'text')
+        .map(b => b.content)
+        .join('\n\n') || '';
+
       const courseData: any = {
-        title: selectedItem?.title || courseChapters[0]?.title,
-        description: courseChapters[0]?.blocks.find(b => b.type === 'text')?.content || '',
+        title: selectedItem?.title || courseChapters[0]?.title || 'Untitled Course',
+        description: allText,
         image: courseImage,
-        category: 'Instructional',
+        category: selectedItem?.category || 'Instructional',
         instructor: instructorName,
-        price: '0.00',
-        level: 'Beginner',
-        rating: 5,
-        total_duration: '2h'
+        price: coursePrice || '0.00',
+        level: selectedItem?.level || 'Beginner',
+        rating: selectedItem?.rating || 5,
+        total_duration: selectedItem?.total_duration || '2h',
+        user_id: user?.id
       };
 
       let courseId = selectedItem?.id;
@@ -298,27 +342,40 @@ const Management: React.FC = () => {
       // Save Chapters
       for (let i = 0; i < courseChapters.length; i++) {
         const ch = courseChapters[i];
-        const chData = {
+        const chData: any = {
           course_id: courseId,
           title: ch.title,
-          order: i,
-          content_blocks: ch.blocks
+          order: i
         };
 
-        if (ch.id && !ch.id.includes('new') && !ch.id.includes('ch')) {
+        console.log(`Executing chapter action for course ${courseId}, User: ${user?.id}`, chData);
+
+        if (ch.id && !ch.id.toString().includes('new') && !ch.id.toString().includes('ch')) {
           const { error: chUpdateError } = await supabase.from('chapters').update(chData).eq('id', ch.id);
-          if (chUpdateError) console.error("Error updating chapter:", chUpdateError);
+          if (chUpdateError) {
+            console.error("Error updating chapter:", chUpdateError);
+            alert(`Failed to synchronize chapter structure: ${chUpdateError.message}`);
+            if (chUpdateError.code === '42501') {
+              console.warn("RLS Violation: Please ensure your Supabase policy allows UPDATE on 'chapters' for authenticated users.");
+            }
+          }
         } else {
           const { error: chInsertError } = await supabase.from('chapters').insert(chData);
-          if (chInsertError) console.error("Error inserting chapter:", chInsertError);
+          if (chInsertError) {
+            console.error("Error inserting chapter:", chInsertError);
+            alert(`Failed to deploy new chapter asset: ${chInsertError.message}`);
+            if (chInsertError.code === '42501') {
+              console.warn("RLS Violation: Your user ID might not be correctly associated with this course, or the 'chapters' table insert policy is missing.");
+            }
+          }
         }
       }
 
       setView('list');
       fetchData();
     } catch (err: any) {
-      console.error('Error saving course:', err);
-      alert(`Kurs kaydedilirken bir hata oluştu: ${err.message || 'Bilinmeyen hata'}`);
+      console.error('Error synchronizing academic asset:', err);
+      alert('Critical: Failed to synchronize academic asset with the master repository.');
     } finally {
       setLoading(false);
     }
@@ -331,7 +388,8 @@ const Management: React.FC = () => {
       const lessonData: any = {
         title: selectedItem?.title || 'New Lesson',
         content_blocks: lessonBlocks,
-        image_url: lessonImage
+        image_url: lessonImage,
+        user_id: user?.id
       };
 
       if (selectedItem?.id) {
@@ -357,7 +415,8 @@ const Management: React.FC = () => {
         title: selectedItem?.title || 'New Exam',
         questions: examQuestions,
         questions_count: examQuestions.length,
-        instructor: instructorName
+        instructor: instructorName,
+        user_id: user?.id
       };
 
       if (selectedItem?.id) {
@@ -366,7 +425,13 @@ const Management: React.FC = () => {
         await supabase.from('exams').insert(examData);
       }
 
-      setView('list');
+      setExamCreatedStatus({
+        success: true,
+        questionsCount: examQuestions.length,
+        chapterIndex: activeChapterIndex
+      });
+
+      setView(preExamView);
       fetchData();
     } catch (err) {
       console.error('Error saving exam:', err);
@@ -533,7 +598,11 @@ const Management: React.FC = () => {
       <div className="min-h-full bg-slate-200 p-6 lg:p-12 animate-fade-in max-w-6xl mx-auto space-y-12 pb-32 text-slate-900">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => setView('list')} className="material-symbols-outlined p-2 hover:bg-white rounded-xl transition-all shadow-sm text-slate-900 font-black">arrow_back</button>
+            <button onClick={() => {
+              if (window.confirm("Confirm exit: Unsaved structural modifications will be discarded. Proceed?")) {
+                setView('list');
+              }
+            }} className="material-symbols-outlined p-2 hover:bg-white rounded-xl transition-all shadow-sm text-slate-900 font-black">arrow_back</button>
             <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Institutional Course Architect</h2>
           </div>
           <div className="flex gap-4">
@@ -577,6 +646,20 @@ const Management: React.FC = () => {
                   className="w-full bg-slate-100 border-2 border-slate-200 p-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500"
                 />
               </div>
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Master Deployment Valuation (Price)</label>
+                <div className="relative">
+                  <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={coursePrice}
+                    onChange={(e) => setCoursePrice(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-slate-100 border-2 border-slate-200 pl-12 pr-6 py-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500"
+                  />
+                </div>
+              </div>
               <div className="flex flex-wrap gap-3 py-4 border-b border-slate-200 overflow-x-auto">
                 {courseChapters.map((ch, idx) => (
                   <button key={ch.id} onClick={() => setActiveChapterIndex(idx)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeChapterIndex === idx ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200'}`}>
@@ -595,7 +678,7 @@ const Management: React.FC = () => {
                       <span className="material-symbols-outlined text-sm font-black">close</span>
                     </button>
                     {block.type === 'text' ? (
-                      <textarea value={block.content} onChange={(e) => updateBlock('course', block.id, e.target.value)} placeholder="Type course summary..." className="w-full bg-slate-100 border-2 border-slate-200 p-8 rounded-[32px] min-h-[180px] outline-none focus:border-brand-500 font-medium text-slate-900 leading-relaxed" />
+                      <textarea value={block.content} onChange={(e) => updateBlock('course', block.id, e.target.value)} placeholder="Provide an institutional narrative for this academic segment..." className="w-full bg-slate-100 border-2 border-slate-200 p-8 rounded-[32px] min-h-[180px] outline-none focus:border-brand-500 font-medium text-slate-900 leading-relaxed" />
                     ) : (
                       <div className="w-full aspect-video bg-slate-100 border-2 border-dashed border-slate-300 rounded-[32px] flex flex-col items-center justify-center p-4">
                         {block.content ? (
@@ -620,6 +703,40 @@ const Management: React.FC = () => {
                   <button onClick={() => addBlock('course', 'image')} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-slate-300 hover:bg-slate-200 flex items-center justify-center gap-2 font-black transition-all">
                     <span className="material-symbols-outlined text-lg font-black">image</span> Insert Visual Aid
                   </button>
+                </div>
+                <div className="pt-6 border-t border-slate-200 space-y-4">
+                  {examCreatedStatus?.success && examCreatedStatus.chapterIndex === activeChapterIndex ? (
+                    <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl flex flex-col gap-4 animate-scale-up">
+                      <div className="flex items-center gap-3 text-emerald-700">
+                        <span className="material-symbols-outlined font-black">check_circle</span>
+                        <p className="text-[11px] font-black uppercase tracking-widest">
+                          Success: Successfully created assessment theory with {examCreatedStatus.questionsCount} {examCreatedStatus.questionsCount === 1 ? 'question' : 'questions'}.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setPreExamView('create-course');
+                          setView('create-exam'); // Simple re-entry
+                        }}
+                        className="w-full py-4 bg-white text-emerald-600 border border-emerald-200 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                      >
+                        Modify & Refine Assessment
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setPreExamView('create-course');
+                        setSelectedItem({ title: `${courseChapters[activeChapterIndex]?.title} Assessment` });
+                        setExamQuestions([]);
+                        setView('create-exam');
+                      }}
+                      className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/10 hover:bg-brand-500 transition-all flex items-center justify-center gap-3"
+                    >
+                      <span className="material-symbols-outlined font-black">terminal</span>
+                      Architect Chapter-Specific Assessment Theory
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -719,151 +836,166 @@ const Management: React.FC = () => {
       </div>
     );
   } else if (view === 'create-exam') {
+    const currentQ = examQuestions[currentExamQuestionIndex];
+
+    const updateQuestion = (updates: Partial<Question>) => {
+      if (!currentQ) return;
+      const updated = [...examQuestions];
+      updated[currentExamQuestionIndex] = { ...updated[currentExamQuestionIndex], ...updates };
+      setExamQuestions(updated);
+    };
+
+    const addQuestion = () => {
+      const newQ: Question = {
+        id: `q-${Date.now()}`,
+        type: 'multiple-choice',
+        text: '',
+        points: 1,
+        difficulty: 'Medium',
+        options: [
+          { id: 'A', text: '' },
+          { id: 'B', text: '' },
+          { id: 'C', text: '' },
+          { id: 'D', text: '' }
+        ],
+        correctOptionId: 'A'
+      };
+      setExamQuestions([...examQuestions, newQ]);
+      setCurrentExamQuestionIndex(examQuestions.length);
+    };
+
+    const deleteQuestion = () => {
+      if (examQuestions.length <= 1) return;
+      const updated = examQuestions.filter((_, i) => i !== currentExamQuestionIndex);
+      setExamQuestions(updated);
+      setCurrentExamQuestionIndex(Math.max(0, currentExamQuestionIndex - 1));
+    };
+
     content = (
-      <div className="min-h-full bg-slate-200 p-6 lg:p-12 animate-fade-in max-w-[1400px] mx-auto pb-32 text-slate-900">
-        <header className="flex items-center justify-between bg-white p-10 rounded-[40px] border border-slate-300 shadow-xl mb-12">
-          <div className="flex items-center gap-6 text-slate-900">
-            <button onClick={() => setView('list')} className="material-symbols-outlined w-14 h-14 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-2xl transition-all shadow-inner text-slate-900 font-black">arrow_back</button>
-            <div>
-              <h2 className="text-3xl font-black uppercase tracking-tighter leading-none">Assessment Architect</h2>
-              <p className="text-[11px] font-bold text-brand-500 uppercase tracking-[0.3em] mt-2 flex items-center gap-2 font-black">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
-                ACTIVE PIPELINE DESIGNER
-              </p>
+      <div className="min-h-full bg-[#f1f5f9] animate-fade-in flex flex-col items-center justify-center p-6 lg:p-12 pb-32">
+        <div className="w-full max-w-4xl space-y-8">
+          <header className="flex items-center justify-between bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm w-full">
+            <div className="flex items-center gap-6">
+              <button onClick={() => {
+                if (window.confirm("Are you sure you want to go back? All unsaved questions in this session will be permanently cleared.")) {
+                  setView(preExamView);
+                  // Clear questions after moving away to avoid race condition/render crash
+                  setTimeout(() => setExamQuestions([]), 100);
+                }
+              }} className="material-symbols-outlined w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl transition-all text-slate-900 font-black">arrow_back</button>
+              <div>
+                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Assessment Architect</h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse"></div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Designing Strategic Pipeline</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button onClick={() => handleTitleClick(selectedItem, 'view-exam')} className="px-8 py-5 bg-slate-100 text-slate-800 border border-slate-300 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all">Audit Preview</button>
-            <button onClick={handleSaveExam} disabled={loading} className="px-10 py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl active:scale-95 transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm font-black">{loading ? 'sync' : 'database'}</span>
-              {loading ? 'Processing...' : 'Deploy Examination'}
-            </button>
-          </div>
-        </header>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
-          <aside className="lg:col-span-1 space-y-10">
-            <div className="bg-white p-10 rounded-[40px] border border-slate-300 shadow-sm space-y-8 font-black">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-4">Configuration</h3>
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-700 uppercase tracking-widest px-1">Institutional Title</label>
-                  <input
-                    type="text"
-                    value={selectedItem?.title || ''}
-                    onChange={(e) => setSelectedItem({ ...selectedItem, title: e.target.value })}
-                    className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-bold text-xs uppercase outline-none focus:border-brand-500 text-slate-900"
+            <div className="flex items-center gap-4">
+              <button onClick={handleSaveExam} disabled={loading} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/10 active:scale-95 flex items-center gap-2 transition-all">
+                <span className="material-symbols-outlined text-sm font-black">{loading ? 'sync' : 'publish'}</span>
+                {loading ? 'Committing...' : 'Finalize & Deploy'}
+              </button>
+            </div>
+          </header>
+
+          {!currentQ ? (
+            <div className="bg-white p-20 rounded-[40px] border border-slate-200 shadow-sm flex flex-col items-center justify-center space-y-6">
+              <span className="material-symbols-outlined text-6xl text-slate-200 animate-pulse">database_off</span>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Repository Segment Empty. Initialize Pipeline Item.</p>
+              <button onClick={addQuestion} className="bg-brand-500 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl">Initialize Architect</button>
+            </div>
+          ) : (
+            <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm space-y-10 w-full animate-fade-in">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+                <div className="space-y-1">
+                  <span className="text-brand-500 text-[10px] font-black uppercase tracking-[0.2em]">Step {currentExamQuestionIndex + 1} of {examQuestions.length}</span>
+                  <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Question Core Engine</h3>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={deleteQuestion} disabled={examQuestions.length <= 1} className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all disabled:opacity-30">
+                    <span className="material-symbols-outlined font-black">delete</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-10">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Question Narrative</label>
+                  <textarea
+                    value={currentQ?.text || ''}
+                    onChange={(e) => updateQuestion({ text: e.target.value })}
+                    placeholder="Insert pedagogical inquiry or complex logical problem statement..."
+                    className="w-full bg-slate-50 border-2 border-slate-100 p-8 rounded-[28px] min-h-[160px] outline-none focus:border-brand-500 font-bold text-slate-900 leading-relaxed text-lg shadow-inner"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-700 uppercase tracking-widest px-1">Logic Model</label>
-                  <select className="w-full bg-slate-100 border border-slate-200 rounded-xl p-4 font-bold text-xs uppercase outline-none focus:border-brand-500 text-slate-900">
-                    <option>Standard Linear</option>
-                    <option>Adaptive Heuristic</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-700 uppercase tracking-widest px-1">Time Limit (MIN)</label>
-                  <input type="number" defaultValue="60" className="w-full bg-slate-100 border border-slate-200 p-4 rounded-xl text-xs font-bold outline-none text-slate-900" />
-                </div>
-              </div>
-            </div>
-          </aside>
-          <main className="lg:col-span-3 space-y-10">
-            <div className="flex justify-between items-center px-6">
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none font-black">Question Pipeline <span className="text-slate-600 ml-2 font-black">({examQuestions.length}/25)</span></h3>
-              <div className="flex gap-4">
-                <button onClick={handleBulkReorder} className="bg-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border border-slate-300 shadow-sm hover:bg-slate-100 text-slate-700 transition-all font-black">Shuffle Pipeline</button>
-                <button onClick={() => openExamItemModal()} className="bg-slate-900 text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Add Pipeline Item</button>
-              </div>
-            </div>
-            <div className="space-y-8">
-              {examQuestions.map((q, idx) => (
-                <div key={idx} className="bg-white p-12 rounded-[40px] border border-slate-300 shadow-sm hover:border-brand-500/30 transition-all group relative">
-                  <div className="flex justify-between items-start mb-8 text-slate-900">
-                    <div className="flex gap-4">
-                      <span className="bg-slate-900 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">Item {idx + 1}</span>
-                      <span className="bg-brand-50 text-brand-500 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-brand-200">{q.type}</span>
-                      <span className="bg-slate-100 text-slate-700 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-300 font-black">{q.points} Pts</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => openExamItemModal(idx)} className="w-12 h-12 bg-slate-100 text-slate-700 hover:text-brand-500 hover:bg-brand-50 rounded-xl transition-all flex items-center justify-center font-black">
-                        <span className="material-symbols-outlined text-xl font-black">edit</span>
-                      </button>
-                      <button onClick={() => setExamQuestions(examQuestions.filter((_, i) => i !== idx))} className="w-12 h-12 bg-slate-100 text-slate-700 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all flex items-center justify-center font-black">
-                        <span className="material-symbols-outlined text-xl font-black">delete</span>
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-xl font-black text-slate-900 leading-tight uppercase tracking-tight">{q.text}</p>
-                  <div className="mt-8 pt-8 border-t border-slate-200 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em]">Difficulty Heuristic: <span className="text-slate-900">{q.difficulty}</span></span>
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-600">
-                      <span className="material-symbols-outlined text-sm font-black">check_circle</span>
-                      Answer Key: {q.correctOptionId}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </main>
-        </div>
-        {importModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md animate-fade-in" onClick={() => setImportModalOpen(false)}></div>
-            <div className="relative bg-white w-full max-w-2xl rounded-[40px] overflow-hidden shadow-2xl animate-scale-up border border-slate-300 flex flex-col max-h-[90vh]">
-              <div className="p-10 border-b border-slate-200 bg-slate-100 flex items-center justify-between">
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingQuestionIndex !== null ? 'Modify' : 'Inject'} Pipeline Item</h3>
-                <button onClick={() => setImportModalOpen(false)} className="material-symbols-outlined p-2 hover:bg-white rounded-xl transition-all text-slate-700 font-black">close</button>
-              </div>
-              <div className="p-10 space-y-8 flex-1 overflow-y-auto custom-scrollbar text-slate-900">
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest px-1">Problem Statement</label>
-                  <textarea
-                    value={currentModalQuestion.text}
-                    onChange={(e) => setCurrentModalQuestion({ ...currentModalQuestion, text: e.target.value })}
-                    placeholder="Input pedagogical content or mathematical expressions..."
-                    className="w-full bg-slate-100 border border-slate-200 p-6 rounded-[24px] h-36 outline-none focus:border-brand-500 font-bold text-base text-slate-900 leading-relaxed"
-                  ></textarea>
-                </div>
+
                 <div className="space-y-6">
-                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest px-1">Response Candidates</label>
-                  {currentModalQuestion.options?.map((opt, i) => (
-                    <div key={opt.id} className="flex gap-4 items-center group">
-                      <div className={`w-10 h-10 rounded-xl font-black flex items-center justify-center shrink-0 border-2 transition-all ${currentModalQuestion.correctOptionId === opt.id ? 'bg-brand-500 text-white border-brand-500' : 'bg-slate-100 text-slate-600 border-slate-200 shadow-inner'
-                        }`}>
-                        {opt.id}
-                      </div>
-                      <input
-                        type="text"
-                        value={opt.text}
-                        onChange={(e) => {
-                          const newOpts = [...(currentModalQuestion.options || [])];
-                          newOpts[i].text = e.target.value;
-                          setCurrentModalQuestion({ ...currentModalQuestion, options: newOpts });
-                        }}
-                        placeholder={`Option ${opt.id} narrative...`}
-                        className="flex-1 bg-slate-50 border border-slate-200 p-4 rounded-2xl outline-none focus:border-brand-500 font-bold text-xs uppercase tracking-wider text-slate-900 shadow-sm"
-                      />
-                      <button
-                        onClick={() => setCurrentModalQuestion({ ...currentModalQuestion, correctOptionId: opt.id })}
-                        className={`w-10 h-10 rounded-full border-4 flex items-center justify-center transition-all ${currentModalQuestion.correctOptionId === opt.id ? 'bg-emerald-500 border-emerald-200 text-white' : 'border-slate-300 hover:border-brand-500'
-                          }`}
-                      >
-                        {currentModalQuestion.correctOptionId === opt.id && <span className="material-symbols-outlined text-sm font-black">check</span>}
-                      </button>
-                    </div>
-                  ))}
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Response Candidate Architecture</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {currentQ?.options.map((opt, i) => {
+                      const isCorrect = currentQ.correctOptionId === opt.id;
+                      return (
+                        <div key={opt.id} className={`group relative flex items-center gap-4 p-2 rounded-[22px] border-2 transition-all ${isCorrect ? 'border-brand-500 bg-brand-50/50' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
+                          <button
+                            onClick={() => updateQuestion({ correctOptionId: opt.id })}
+                            className={`w-10 h-10 rounded-xl font-black flex items-center justify-center shrink-0 border-2 transition-all ${isCorrect ? 'bg-brand-500 text-white border-brand-500' : 'bg-slate-50 text-slate-400 border-slate-100 group-hover:bg-brand-50 group-hover:text-brand-500 group-hover:border-brand-100'}`}
+                          >
+                            {opt.id}
+                          </button>
+                          <input
+                            type="text"
+                            value={opt.text}
+                            onChange={(e) => {
+                              if (!currentQ?.options) return;
+                              const newOpts = [...currentQ.options];
+                              newOpts[i].text = e.target.value;
+                              updateQuestion({ options: newOpts });
+                            }}
+                            placeholder={`Option ${opt.id}...`}
+                            className="flex-1 bg-transparent border-none py-4 pr-10 outline-none font-bold text-xs uppercase tracking-wider text-slate-900"
+                          />
+                          {isCorrect && (
+                            <div className="absolute right-4 text-brand-500 animate-scale-up">
+                              <span className="material-symbols-outlined font-black text-lg">check_circle</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-              <div className="p-8 border-t border-slate-200 bg-slate-50 flex gap-4">
-                <button onClick={() => setImportModalOpen(false)} className="flex-1 bg-white text-slate-700 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-slate-300 hover:bg-slate-100 transition-all font-black">Abort Changes</button>
-                <button onClick={saveExamQuestion} className="flex-1 bg-brand-500 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-500/20 active:scale-95 transition-all font-black">
-                  {editingQuestionIndex !== null ? 'Apply Amendments' : 'Commit to Pipeline'}
-                </button>
+
+              <div className="flex items-center justify-between pt-10 border-t border-slate-100">
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setCurrentExamQuestionIndex(Math.max(0, currentExamQuestionIndex - 1))}
+                    disabled={currentExamQuestionIndex === 0}
+                    className="px-6 py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-0"
+                  >
+                    Previous Step
+                  </button>
+                </div>
+                <div className="flex gap-4">
+                  <button
+                    onClick={addQuestion}
+                    className="px-8 py-4 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 font-black text-[10px] uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                  >
+                    + Add New Item
+                  </button>
+                  <button
+                    onClick={() => setCurrentExamQuestionIndex(Math.min(examQuestions.length - 1, currentExamQuestionIndex + 1))}
+                    disabled={currentExamQuestionIndex === examQuestions.length - 1}
+                    className="px-10 py-4 rounded-2xl bg-brand-500 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-600 transition-all disabled:opacity-0"
+                  >
+                    Next Logic Step
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   } else {
