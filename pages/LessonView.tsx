@@ -383,54 +383,66 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
                 </div>
               )}
 
-              {/* Actions Section */}
-              <div className="my-12 p-10 bg-white rounded-[40px] border-2 border-slate-100 text-center shadow-xl shadow-slate-200/40">
+              {/* Actions Section - Restored Card Based Layout */}
+              <div className="my-12 grid grid-cols-1 md:grid-cols-2 gap-6">
                 {!user ? (
-                  <div className="space-y-6">
+                  <div className="md:col-span-2 p-10 bg-white rounded-[40px] border-2 border-slate-100 text-center shadow-xl shadow-slate-200/40 space-y-6">
                     <div className="w-20 h-20 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-4">
                       <span className="material-symbols-outlined text-4xl">person_add</span>
                     </div>
                     <div>
                       <h3 className="font-black text-2xl text-slate-900 mb-2 uppercase tracking-tight">Save Your Progress</h3>
-                      <p className="text-slate-500 font-medium max-w-md mx-auto">Join the platform to track your academic journey, take exams, and earn certifications.</p>
+                      <p className="text-slate-500 font-medium max-w-md mx-auto">Join the platform to track your academic journey and take exams.</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col w-full gap-4">
-                    {/* Mark as Read Button */}
-                    <button
-                      onClick={handleMarkAsRead}
-                      disabled={enrollment?.lesson_progress?.[currentLesson.id]?.read}
-                      className={`w-full flex items-center justify-center gap-4 px-10 py-5 rounded-[22px] font-black text-xs uppercase tracking-[0.2em] transition-all
-                          ${enrollment?.lesson_progress?.[currentLesson.id]?.read
-                          ? 'bg-emerald-50 text-emerald-600 border-2 border-emerald-100 cursor-default'
-                          : 'bg-slate-900 text-white shadow-xl shadow-slate-900/30 hover:bg-brand-500 hover:shadow-brand-500/20 active:scale-95'
-                        }`}
+                  <>
+                    {/* Mark as Completed Card */}
+                    <div className={`p-8 rounded-[32px] border-2 transition-all flex flex-col items-center text-center gap-4
+                        ${enrollment?.lesson_progress?.[currentLesson.id]?.read
+                        ? 'bg-emerald-50 border-emerald-100 shadow-sm'
+                        : 'bg-white border-slate-100 shadow-xl shadow-slate-200/40 hover:border-brand-500'}`}
                     >
-                      <span className="material-symbols-outlined font-black">
-                        {enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'verified' : 'task_alt'}
-                      </span>
-                      {enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'Lesson Completed' : 'Mark as Completed'}
-                    </button>
-
-                    {/* Take Practice Exam Button - Restored as per request */}
-                    <button
-                      onClick={() => onTakeExam?.(currentLesson.id, currentLesson.title)}
-                      className="w-full flex items-center justify-center gap-4 px-10 py-5 rounded-[22px] bg-white text-slate-900 border-2 border-slate-200 font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95 shadow-sm"
-                    >
-                      <span className="material-symbols-outlined font-black text-brand-500">quiz</span>
-                      Take Unit Exam
-                    </button>
-
-                    {enrollment?.lesson_progress?.[currentLesson.id]?.read && (
-                      <div className="flex flex-col items-center gap-2 mt-4 animate-fade-in">
-                        <p className="text-emerald-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
-                          <span className="material-symbols-outlined text-base font-black">check_circle</span>
-                          Progress saved to your academic profile
-                        </p>
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-2 
+                        ${enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                        <span className="material-symbols-outlined text-2xl font-black">
+                          {enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'verified' : 'menu_book'}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <div>
+                        <h3 className="font-black text-lg text-slate-900 uppercase tracking-tight">Lesson Study</h3>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Mark this session as reviewed</p>
+                      </div>
+                      <button
+                        onClick={handleMarkAsRead}
+                        disabled={enrollment?.lesson_progress?.[currentLesson.id]?.read}
+                        className={`w-full mt-2 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all
+                            ${enrollment?.lesson_progress?.[currentLesson.id]?.read
+                            ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                            : 'bg-slate-900 text-white shadow-lg hover:bg-brand-500 active:scale-95'
+                          }`}
+                      >
+                        {enrollment?.lesson_progress?.[currentLesson.id]?.read ? 'Completed' : 'Mark Completed'}
+                      </button>
+                    </div>
+
+                    {/* Take Unit Exam Card */}
+                    <div className="p-8 rounded-[32px] bg-white border-2 border-slate-100 shadow-xl shadow-slate-200/40 hover:border-brand-500 transition-all flex flex-col items-center text-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-brand-50 text-brand-500 flex items-center justify-center mb-2 shadow-inner">
+                        <span className="material-symbols-outlined text-2xl font-black">quiz</span>
+                      </div>
+                      <div>
+                        <h3 className="font-black text-lg text-slate-900 uppercase tracking-tight">Knowledge Check</h3>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Validate your understanding</p>
+                      </div>
+                      <button
+                        onClick={() => onTakeExam?.(currentLesson.chapter_id || currentLesson.id, currentLesson.title)}
+                        className="w-full mt-2 py-4 rounded-xl bg-brand-500 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:bg-brand-600 active:scale-95 transition-all"
+                      >
+                        Take Unit Exam
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             </article>

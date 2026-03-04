@@ -11,53 +11,55 @@ interface CourseDetailsProps {
   previewMode?: boolean;
 }
 
-const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, onTakeExam, course, previewMode = false }) => {
+const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLesson, onTakeExam, previewMode = false }) => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewingIntro, setViewingIntro] = useState<Chapter | null>(null);
 
   useEffect(() => {
-    if (course?.id) {
-      fetchCurriculum();
-    }
-  }, [course?.id]);
-
-  const fetchCurriculum = async () => {
-    try {
+    const fetchCurriculum = async () => {
+      if (!course?.id) return;
       setLoading(true);
-      const { data } = await supabase
-        .from('chapters')
-        .select(`*, lessons(*)`)
-        .eq('course_id', course?.id)
-        .order('order');
+      try {
+        const { data, error } = await supabase
+          .from('chapters')
+          .select('*, lessons(*)')
+          .eq('course_id', course.id)
+          .order('order');
 
-      if (data) {
+        if (error) throw error;
         // Sort lessons
         const sorted = data.map((ch: any) => ({
           ...ch,
           lessons: ch.lessons.sort((a: any, b: any) => a.order - b.order)
         }));
-        setChapters(sorted);
+        setChapters(sorted || []);
+      } catch (err) {
+        console.error('Error fetching curriculum:', err);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching curriculum:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchCurriculum();
+  }, [course?.id]);
 
   // Determine status for each lesson
-  // Logic: 
-  // 1. First lesson of first chapter is ALWAYS Open.
-  // 2. A lesson is OPEN if the PREVIOUS lesson is COMPLETED.
-  // 3. A lesson is COMPLETED if progress >= 95% (Scroll + Exam).
+  const allLessons = chapters.flatMap(ch => ch.lessons || []);
 
-  // Flatten lessons to find "previous" easily
-  const allLessons = chapters.flatMap(ch => ch.lessons);
+  const getIntroStatus = (chapterId: string): 'Completed' | 'Open' | 'Locked' => {
+    if (previewMode) return 'Locked';
+    const progress = course?.lesson_progress?.[`intro-${chapterId}`];
+    return progress?.read ? 'Completed' : 'Open';
+  };
 
-  const getLessonStatus = (lessonId: string) => {
-    if (previewMode) return { status: 'Locked', icon: 'lock', color: 'slate' };
+  const getLessonStatus = (lessonId: string, chapterId: string): { status: 'Completed' | 'Partially Completed' | 'Open' | 'Locked'; icon: string } => {
+    if (previewMode) return { status: 'Locked', icon: 'lock' };
 
-    // Check granular progress + Legacy fallback
+    // A lesson is LOCKED if the Chapter Intro is not completed
+    const introStatus = getIntroStatus(chapterId);
+    if (introStatus !== 'Completed') return { status: 'Locked', icon: 'lock' };
+
     const progress = course?.lesson_progress?.[lessonId];
     const isLegacy = course?.completed_lesson_ids?.includes(lessonId);
 
@@ -65,34 +67,128 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, on
     const examScore = ((progress?.quiz_score || 0) >= 50 || isLegacy) ? 50 : 0;
     const totalScore = readScore + examScore;
 
-    // If Completed
-    if (totalScore >= 95) {
-      return { status: 'Completed', icon: 'check_circle', color: 'emerald' };
-    }
+    if (totalScore >= 95) return { status: 'Completed', icon: 'check_circle' };
+    if (readScore >= 50) return { status: 'Partially Completed', icon: 'pending' };
 
-    // If Partially Completed (Read but not passed quiz)
-    if (readScore >= 50) {
-      return { status: 'Partially Completed', icon: 'pending', color: 'amber' };
-    }
+    // Internal locking within chapter
+    const chapter = chapters.find(c => c.id === chapterId);
+    if (!chapter) return { status: 'Locked', icon: 'lock' };
 
-    // Check Locking
-    const index = allLessons.findIndex(l => l.id === lessonId);
-    if (index === 0) {
-      return { status: 'Open', icon: 'play_arrow', color: 'brand' }; // First lesson always open
-    }
+    const lessons = chapter.lessons || [];
+    const index = lessons.findIndex(l => l.id === lessonId);
+    if (index === 0) return { status: 'Open', icon: 'play_arrow' };
 
-    // Check previous lesson status
-    const prevLesson = allLessons[index - 1];
-    const prevEntry = course?.lesson_progress?.[prevLesson.id];
-    const prevIsLegacy = course?.completed_lesson_ids?.includes(prevLesson.id);
-    const prevTotal = (prevEntry?.read || prevIsLegacy ? 50 : 0) + (((prevEntry?.quiz_score || 0) >= 50 || prevIsLegacy) ? 50 : 0);
+    const prevLesson = lessons[index - 1];
+    const prevStatus = getLessonStatus(prevLesson.id, chapterId).status;
+    if (prevStatus === 'Completed') return { status: 'Open', icon: 'play_arrow' };
 
-    if (prevTotal >= 95) {
-      return { status: 'Open', icon: 'play_arrow', color: 'brand' };
-    }
-
-    return { status: 'Locked', icon: 'lock', color: 'slate' };
+    return { status: 'Locked', icon: 'lock' };
   };
+
+  const getChapterStatus = (chapterId: string): 'Completed' | 'Open' | 'Locked' => {
+    if (previewMode) return 'Locked';
+    const chIndex = chapters.findIndex(c => c.id === chapterId);
+    if (chIndex === -1) return 'Locked';
+
+    const ch = chapters[chIndex];
+    const introDone = getIntroStatus(ch.id) === 'Completed';
+    const lessonsDone = ch.lessons && ch.lessons.length > 0 && ch.lessons.every(l => {
+      const progress = course?.lesson_progress?.[l.id];
+      const isLegacy = course?.completed_lesson_ids?.includes(l.id);
+      return (progress?.read || isLegacy) && ((progress?.quiz_score || 0) >= 50 || isLegacy);
+    });
+
+    if (introDone && lessonsDone) return 'Completed';
+    if (chIndex === 0) return 'Open';
+
+    // A chapter is OPEN if the PREVIOUS chapter is COMPLETED
+    const prevCh = chapters[chIndex - 1];
+    const prevIntroDone = getIntroStatus(prevCh.id) === 'Completed';
+    const prevLessonsDone = prevCh.lessons && prevCh.lessons.length > 0 && prevCh.lessons.every(l => {
+      const progress = course?.lesson_progress?.[l.id];
+      const isLegacy = course?.completed_lesson_ids?.includes(l.id);
+      return (progress?.read || isLegacy) && ((progress?.quiz_score || 0) >= 50 || isLegacy);
+    });
+
+    if (prevIntroDone && prevLessonsDone) return 'Open';
+    return 'Locked';
+  };
+
+  const handleCompleteIntro = async (chapterId: string) => {
+    if (previewMode || !course?.id) return;
+    try {
+      // Find current enrollment
+      const { data: enrollment } = await supabase
+        .from('enrollments')
+        .select('*')
+        .eq('course_id', course.id)
+        .single();
+
+      if (!enrollment) return;
+
+      const newProgress = {
+        ...(enrollment.lesson_progress || {}),
+        [`intro-${chapterId}`]: { read: true }
+      };
+
+      await supabase
+        .from('enrollments')
+        .update({ lesson_progress: newProgress })
+        .eq('id', enrollment.id);
+
+      setViewingIntro(null);
+      // Trigger global refresh
+      window.dispatchEvent(new Event('refresh-progress'));
+      // Local reload logic if needed, but App.tsx usually handles this via props refresh
+    } catch (err) {
+      console.error('Error completing intro:', err);
+    }
+  };
+
+  if (viewingIntro) {
+    return (
+      <div className="min-h-full bg-white flex flex-col p-8 lg:p-20 relative animate-fade-in overflow-y-auto">
+        <button
+          onClick={() => setViewingIntro(null)}
+          className="absolute top-10 left-10 flex items-center gap-2 text-slate-400 hover:text-slate-900 font-black uppercase tracking-widest text-[10px]"
+        >
+          <span className="material-symbols-outlined">arrow_back</span> Back
+        </button>
+
+        <div className="max-w-3xl mx-auto w-full pt-10">
+          <div className="flex items-center gap-3 text-brand-500 font-black uppercase tracking-widest text-xs mb-4">
+            <span className="material-symbols-outlined">auto_stories</span>
+            <span>{viewingIntro.title}</span>
+          </div>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight uppercase mb-12">
+            {viewingIntro.title}
+          </h2>
+
+          <div className="space-y-10">
+            {viewingIntro.content_blocks && Array.isArray(viewingIntro.content_blocks) && viewingIntro.content_blocks.map((block: any, idx: number) => (
+              block.type === 'text' ? (
+                <div key={block.id || idx} className="text-xl text-slate-700 font-medium leading-relaxed prose prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: block.content }} />
+              ) : (
+                <div key={block.id || idx} className="rounded-[40px] overflow-hidden border-4 border-slate-100 shadow-2xl">
+                  <img src={block.content} className="w-full h-auto object-cover" alt="Intro Visual" />
+                </div>
+              )
+            ))}
+          </div>
+
+          <div className="mt-20 pt-10 border-t border-slate-100 flex justify-center">
+            <button
+              onClick={() => handleCompleteIntro(viewingIntro.id)}
+              className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-2xl hover:bg-brand-500 transition-all active:scale-95 flex items-center gap-4"
+            >
+              <span className="material-symbols-outlined font-black">verified</span>
+              Understood & Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-slate-100 flex flex-col pb-24 lg:pb-10 text-slate-900">
@@ -139,60 +235,142 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ onBack, onStartLesson, on
             {loading ? (
               <div className="p-10 text-center font-bold text-slate-400">Loading Curriculum...</div>
             ) : (
-              <div className="space-y-8">
-                {chapters.map((chapter) => (
-                  <div key={chapter.id} className="space-y-4">
-                    <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest px-2">{chapter.title}</h4>
-                    {chapter.lessons?.map((lesson) => {
-                      const { status, icon, color } = getLessonStatus(lesson.id);
-                      const isLocked = status === 'Locked';
-                      return (
+              <div className="space-y-10">
+                {chapters.map((chapter) => {
+                  const chStatus = getChapterStatus(chapter.id);
+                  const isChLocked = chStatus === 'Locked';
+                  const isChCompleted = chStatus === 'Completed';
+                  const introStatus = getIntroStatus(chapter.id);
+
+                  return (
+                    <div key={chapter.id} className={`bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden transition-all duration-500
+                                ${isChLocked ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100 grayscale-0'}
+                    `}>
+                      <div className={`p-8 border-b border-slate-100 flex flex-col gap-2 ${isChCompleted ? 'bg-emerald-50/30' : 'bg-slate-50/50'}`}>
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                            <span className={`w-2 h-2 rounded-full ${isChCompleted ? 'bg-emerald-500' : 'bg-brand-500'}`}></span>
+                            {chapter.title}
+                          </h4>
+                          {isChCompleted && (
+                            <span className="material-symbols-outlined text-emerald-500 font-black animate-bounce-in">check_circle</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-4 space-y-4">
+                        {/* Chapter Intro Button Item */}
                         <div
-                          key={lesson.id}
-                          className={`p-6 bg-white rounded-[24px] border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all group 
-                            ${isLocked ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-brand-500 cursor-pointer hover:shadow-xl'}
-                          `}
-                          onClick={(e) => {
-                            // Don't trigger lesson view if clicking exam button
-                            if (!previewMode && !isLocked) onStartLesson(lesson.id);
-                            if (isLocked) alert('Complete the previous lesson to unlock this one!');
-                          }}
+                          className={`p-6 rounded-[24px] border flex items-center justify-between gap-4 transition-all group cursor-pointer
+                             ${introStatus === 'Completed' ? 'bg-slate-50 border-emerald-100' : 'bg-white border-slate-100 hover:border-brand-500 hover:shadow-md'}
+                           `}
+                          onClick={() => setViewingIntro(chapter)}
                         >
                           <div className="flex items-center gap-6">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border 
-                                        ${status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                status === 'Partially Completed' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                  isLocked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
-                                    `}>
-                              <span className="material-symbols-outlined text-2xl font-bold">{icon}</span>
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border
+                              ${introStatus === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
+                            `}>
+                              <span className="material-symbols-outlined text-2xl font-bold">
+                                {introStatus === 'Completed' ? 'verified' : 'auto_stories'}
+                              </span>
                             </div>
                             <div>
-                              <h4 className={`text-sm font-black tracking-tight uppercase transition-colors ${isLocked ? 'text-slate-500' : 'text-slate-900 group-hover:text-brand-500'}`}>{lesson.title}</h4>
-                              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Duration: {lesson.duration || '20m'}</p>
+                              <h4 className={`text-sm font-black tracking-tight uppercase transition-colors group-hover:text-brand-500`}>{chapter.title}</h4>
+                              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Start unit from beginning</p>
                             </div>
                           </div>
-
                           <div className="flex items-center gap-2">
-                            {!isLocked && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onTakeExam(lesson.id, lesson.title);
-                                }}
-                                className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-600 transition-all flex items-center gap-2"
-                              >
-                                <span className="material-symbols-outlined text-sm text-brand-400">quiz</span>
-                                Take Exam
-                              </button>
+                            {introStatus === 'Completed' ? (
+                              <span className="material-symbols-outlined text-emerald-500 font-bold">check_circle</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors font-bold">arrow_forward_ios</span>
                             )}
-                            {!isLocked && <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors font-bold ml-2">arrow_forward_ios</span>}
-                            {isLocked && <span className="material-symbols-outlined text-slate-300 font-bold">lock</span>}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ))}
+
+                        {chapter.lessons?.map((lesson) => {
+                          const { status, icon } = getLessonStatus(lesson.id, chapter.id);
+                          const isLocked = status === 'Locked';
+                          return (
+                            <div
+                              key={lesson.id}
+                              className={`p-6 rounded-[24px] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all group 
+                                ${isLocked ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-brand-500 cursor-pointer hover:bg-slate-50 hover:shadow-md'}
+                              `}
+                              onClick={(e) => {
+                                if (!previewMode && !isLocked) onStartLesson(lesson.id);
+                                if (isLocked) alert(introStatus === 'Completed' ? 'Complete the previous lesson to unlock this one!' : 'Please read the Unit Intro first!');
+                              }}
+                            >
+                              <div className="flex items-center gap-6">
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border 
+                                            ${status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                    status === 'Partially Completed' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                      isLocked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
+                                        `}>
+                                  <span className="material-symbols-outlined text-2xl font-bold">{icon}</span>
+                                </div>
+                                <div>
+                                  <h4 className={`text-sm font-black tracking-tight uppercase transition-colors ${isLocked ? 'text-slate-500' : 'text-slate-900 group-hover:text-brand-500'}`}>{lesson.title}</h4>
+                                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Duration: {lesson.duration || '20m'}</p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {!isLocked && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onTakeExam(lesson.id, lesson.title);
+                                    }}
+                                    className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-600 transition-all flex items-center gap-2"
+                                  >
+                                    <span className="material-symbols-outlined text-sm text-brand-400">quiz</span>
+                                    Take Exam
+                                  </button>
+                                )}
+                                {!isLocked && <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors font-bold ml-2">arrow_forward_ios</span>}
+                                {isLocked && <span className="material-symbols-outlined text-slate-300 font-bold">lock</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Unit Assessment Item */}
+                        <div
+                          className={`p-6 rounded-[24px] border flex items-center justify-between gap-4 transition-all group cursor-pointer mt-4
+                             ${isChCompleted ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-900 text-white border-slate-800 hover:bg-brand-500'}
+                             ${introStatus !== 'Completed' ? 'opacity-50 grayscale pointer-events-none' : ''}
+                           `}
+                          onClick={() => onTakeExam(chapter.id, chapter.title)}
+                        >
+                          <div className="flex items-center gap-6">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border
+                              ${isChCompleted ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 'bg-white/10 text-white border-white/20'}
+                            `}>
+                              <span className="material-symbols-outlined text-2xl font-bold">
+                                {isChCompleted ? 'verified' : 'fact_check'}
+                              </span>
+                            </div>
+                            <div>
+                              <h4 className={`text-sm font-black tracking-tight uppercase`}>Unit Final Assessment</h4>
+                              <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${isChCompleted ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                {isChCompleted ? 'Assessment Mastered' : 'Unlock after lessons'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isChCompleted ? (
+                              <span className="material-symbols-outlined text-emerald-500 font-bold">check_circle</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-white/30 group-hover:text-white transition-colors font-bold">arrow_forward_ios</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

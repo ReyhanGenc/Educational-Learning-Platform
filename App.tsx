@@ -44,124 +44,139 @@ const AppContent: React.FC = () => {
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [featuredLessons, setFeaturedLessons] = useState<any[]>([]);
   const [lessonBackTarget, setLessonBackTarget] = useState<'course-details' | 'lessons-list'>('course-details');
+  const [dynamicExamQuestions, setDynamicExamQuestions] = useState<any[]>([]);
+  const [isExamLoading, setIsExamLoading] = useState(false);
 
   // Fetch user data and courses
-  useEffect(() => {
-    const fetchData = async () => {
-      // Only show global loading on initial load or if we have no data
-      if (courses.length === 0) setLoading(true);
-      try {
-        // 1. Fetch available courses with nested chapters and lessons count
-        const { data: coursesData, error: coursesError } = await supabase
-          .from('courses')
-          .select('*, chapters(id, lessons(id))')
-          .order('title');
+  const fetchData = async () => {
+    // Only show global loading on initial load or if we have no data
+    if (courses.length === 0) setLoading(true);
+    try {
+      // 1. Fetch available courses with nested chapters and lessons count
+      const { data: coursesData, error: coursesError } = await supabase
+        .from('courses')
+        .select('*, chapters(id, lessons(id))')
+        .order('title');
 
-        if (coursesError) throw coursesError;
+      if (coursesError) throw coursesError;
 
-        // 2. Fetch user enrollments if logged in
-        let userEnrollments: any[] = [];
-        if (user) {
-          const { data: enrollmentsData, error: enrollmentsError } = await supabase
-            .from('enrollments')
-            .select('*')
-            .eq('user_id', user.id);
+      // 2. Fetch user enrollments if logged in
+      let userEnrollments: any[] = [];
+      if (user) {
+        const { data: enrollmentsData, error: enrollmentsError } = await supabase
+          .from('enrollments')
+          .select('*')
+          .eq('user_id', user.id);
 
-          if (enrollmentsError) console.error('Error fetching enrollments:', enrollmentsError);
-          userEnrollments = enrollmentsData || [];
-          console.log('User Enrollments:', userEnrollments);
-        }
+        if (enrollmentsError) console.error('Error fetching enrollments:', enrollmentsError);
+        userEnrollments = enrollmentsData || [];
+        console.log('User Enrollments:', userEnrollments);
+      }
 
-        // 3. Merge data
-        console.log('Courses before merge:', coursesData?.length);
-        const mergedCourses: Course[] = (coursesData || []).map((course: any) => {
-          const enrollment = userEnrollments.find(e => e.course_id === course.id);
-          const progressMap = enrollment?.lesson_progress || {};
-          const completedIds = enrollment?.completed_lesson_ids || [];
+      // 3. Merge data
+      console.log('Courses before merge:', coursesData?.length);
+      const mergedCourses: Course[] = (coursesData || []).map((course: any) => {
+        const enrollment = userEnrollments.find(e => e.course_id === course.id);
+        const progressMap = enrollment?.lesson_progress || {};
+        const completedIds = enrollment?.completed_lesson_ids || [];
 
-          let totalPointsPossible = 0;
-          let totalPointsEarned = 0;
-          let completedLessonsCount = 0;
+        let totalPointsPossible = 0;
+        let totalPointsEarned = 0;
+        let completedLessonsCount = 0;
 
-          (course.chapters || []).forEach((ch: any) => {
-            (ch.lessons || []).forEach((l: any) => {
-              totalPointsPossible += 100;
-              const p = progressMap[l.id] || {};
-              const isLegacy = completedIds.includes(l.id);
+        (course.chapters || []).forEach((ch: any) => {
+          (ch.lessons || []).forEach((l: any) => {
+            totalPointsPossible += 100;
+            const p = progressMap[l.id] || {};
+            const isLegacy = completedIds.includes(l.id);
 
-              const rScore = (p.read || isLegacy) ? 50 : 0;
-              const qScore = ((p.quiz_score || 0) >= 50 || isLegacy) ? 50 : 0;
-              const lScore = rScore + qScore;
+            const rScore = (p.read || isLegacy) ? 50 : 0;
+            const qScore = ((p.quiz_score || 0) >= 50 || isLegacy) ? 50 : 0;
+            const lScore = rScore + qScore;
 
-              totalPointsEarned += lScore;
-              if (lScore >= 95) completedLessonsCount++;
-            });
+            totalPointsEarned += lScore;
+            if (lScore >= 95) completedLessonsCount++;
           });
-
-          const totalLessons = (course.chapters || []).reduce((acc: number, chapter: any) => {
-            return acc + (chapter.lessons?.length || 0);
-          }, 0);
-
-          const dynamicProgress = totalPointsPossible > 0
-            ? Math.round((totalPointsEarned / totalPointsPossible) * 100)
-            : 0;
-
-          return {
-            id: course.id,
-            title: course.title,
-            instructor: course.instructor,
-            category: course.category,
-            image: course.image,
-            price: parseFloat(course.price),
-            description: course.description,
-            level: course.level,
-            total_duration: course.total_duration,
-            rating: parseFloat(course.rating),
-
-            // Enrollment data
-            isPurchased: !!enrollment,
-            progress: enrollment ? dynamicProgress : 0,
-            completed: enrollment ? completedLessonsCount : 0,
-            total: totalLessons > 0 ? totalLessons : 0,
-            lesson_progress: enrollment ? enrollment.lesson_progress : {},
-            completed_lesson_ids: completedIds
-          };
         });
 
-        setCourses(mergedCourses);
+        const totalLessons = (course.chapters || []).reduce((acc: number, chapter: any) => {
+          return acc + (chapter.lessons?.length || 0);
+        }, 0);
 
-        // 4. Fetch featured lessons for landing page
-        const { data: featuredData } = await supabase
-          .from('lessons')
-          .select('id, title, chapters!inner(title, courses!inner(id, title, category, image))')
-          .limit(6);
+        const dynamicProgress = totalPointsPossible > 0
+          ? Math.round((totalPointsEarned / totalPointsPossible) * 100)
+          : 0;
 
-        if (featuredData) {
-          const flattenedFeatured = (featuredData as any[]).map(item => {
-            const chapter = Array.isArray(item.chapters) ? item.chapters[0] : item.chapters;
-            const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
-            return {
-              id: item.id,
-              title: item.title,
-              chapterTitle: chapter?.title || '',
-              courseId: course?.id || '',
-              courseTitle: course?.title || '',
-              category: course?.category || 'Educational',
-              image: course?.image
-            };
-          });
-          setFeaturedLessons(flattenedFeatured);
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
+        return {
+          id: course.id,
+          title: course.title,
+          instructor: course.instructor,
+          category: course.category,
+          image: course.image,
+          price: parseFloat(course.price),
+          description: course.description,
+          level: course.level,
+          total_duration: course.total_duration,
+          rating: parseFloat(course.rating),
+
+          // Enrollment data
+          isPurchased: !!enrollment,
+          progress: enrollment ? dynamicProgress : 0,
+          completed: enrollment ? completedLessonsCount : 0,
+          total: totalLessons > 0 ? totalLessons : 0,
+          lesson_progress: enrollment ? enrollment.lesson_progress : {},
+          completed_lesson_ids: completedIds
+        };
+      });
+
+      setCourses(mergedCourses);
+
+      // 4. Fetch featured lessons for landing page
+      const { data: featuredData } = await supabase
+        .from('lessons')
+        .select('id, title, chapters!inner(title, courses!inner(id, title, category, image))')
+        .limit(6);
+
+      if (featuredData) {
+        const flattenedFeatured = (featuredData as any[]).map(item => {
+          const chapter = Array.isArray(item.chapters) ? item.chapters[0] : item.chapters;
+          const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
+          return {
+            id: item.id,
+            title: item.title,
+            chapterTitle: chapter?.title || '',
+            courseId: course?.id || '',
+            courseTitle: course?.title || '',
+            category: course?.category || 'Educational',
+            image: course?.image
+          };
+        });
+        setFeaturedLessons(flattenedFeatured);
       }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('Refreshing progress event received');
+      fetchData();
     };
+    window.addEventListener('refresh-progress', handleRefresh);
+    return () => window.removeEventListener('refresh-progress', handleRefresh);
+  }, [user?.id]);
 
+  useEffect(() => {
     fetchData();
-  }, [user, currentPage]); // Re-fetch when page changes to ensure data is fresh, especially after return from payment
-
+    if (view === 'app' && user && !role && !authLoading) {
+      // Small delay to ensure DB role is propagated if just signed up
+      const timer = setTimeout(() => fetchData(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [user?.id, view]);
 
   const addToCart = (course: Course) => {
     // 1. Check if already purchased
@@ -216,7 +231,50 @@ const AppContent: React.FC = () => {
         throw new Error('Payment recording failed.');
       }
 
-      // 3. Create Enrollments (with check)
+      // 3. Update Instructor Balances and Record Transactions
+      for (const item of cart) {
+        // Find instructor ID for this course
+        const { data: courseData, error: courseError } = await supabase
+          .from('courses')
+          .select('user_id, price')
+          .eq('id', item.id)
+          .single();
+
+        if (courseError) {
+          console.error(`Error fetching instructor for course ${item.id}:`, courseError);
+          continue;
+        }
+
+        const instructorId = courseData.user_id;
+        const amount = parseFloat(courseData.price);
+
+        if (instructorId) {
+          // Update instructor balance
+          const { error: balanceError } = await supabase.rpc('increment_balance', {
+            user_id_param: instructorId,
+            amount_param: amount
+          });
+
+          // Fallback if RPC doesn't exist yet (though we should assume SQL was run)
+          if (balanceError) {
+            console.warn('RPC increment_balance failed, falling back to manual update:', balanceError);
+            const { data: profile } = await supabase.from('profiles').select('balance').eq('id', instructorId).single();
+            const currentBalance = parseFloat(profile?.balance || '0');
+            await supabase.from('profiles').update({ balance: currentBalance + amount }).eq('id', instructorId);
+          }
+
+          // Record transaction
+          await supabase.from('instructor_transactions').insert({
+            instructor_id: instructorId,
+            student_id: user.id,
+            course_id: item.id,
+            amount: amount,
+            description: `Sale of course: ${item.title}`
+          });
+        }
+      }
+
+      // 4. Create Enrollments (with check)
       console.log('Creating enrollments for:', cart.map(c => c.id));
 
       const newEnrollments = cart.map(course => ({
@@ -240,7 +298,7 @@ const AppContent: React.FC = () => {
 
       console.log('Enrollments inserted successfully:', insertedEnrollments);
 
-      // 4. Update Local State & Force Re-fetch
+      // 5. Update Local State & Force Re-fetch
       // Optimistic update
       const updatedCourses = courses.map(course => {
         if (cart.find(c => c.id === course.id)) {
@@ -251,14 +309,13 @@ const AppContent: React.FC = () => {
 
       setCourses(updatedCourses);
       setCart([]);
+
+      // 6. Refresh data manually
+      await fetchData();
+
       setCurrentPage('dashboard');
 
       alert('Payment Successful! You can now access your new courses.');
-
-      // Force page reload to ensure all states (like lesson viewers) are fresh
-      // This is a bit heavy-handed but ensures 100% sync until we have a global store
-      window.location.reload();
-
     } catch (error: any) {
       console.error('Payment Error:', error);
       // specific error handling
@@ -391,6 +448,7 @@ const AppContent: React.FC = () => {
       if (updateError) throw updateError;
 
       alert(`Exam Completed! Score: ${score}%`);
+      setDynamicExamQuestions([]); // Clear
 
       // 4. Navigate to Results View
       // We pass the lesson ID as a pseudo exam ID to trigger unit-specific result display
@@ -620,14 +678,36 @@ const AppContent: React.FC = () => {
         const lessonProgressMap = currentCourse?.lesson_progress || {};
         const activeUnitProgress = lessonProgressMap[activeExamLessonId!];
 
+        // Fetch exam if not loaded
+        if (dynamicExamQuestions.length === 0 && !isExamLoading) {
+          setIsExamLoading(true);
+          supabase.from('exams').select('*').eq('chapter_id', activeExamLessonId).maybeSingle().then(({ data }) => {
+            if (data) {
+              setDynamicExamQuestions(data.questions || []);
+            } else {
+              // Fallback to UNIT_EXAMS
+              setDynamicExamQuestions(UNIT_EXAMS[activeExamLessonId!] || []);
+            }
+            setIsExamLoading(false);
+          });
+        }
+
+        if (isExamLoading) {
+          return (
+            <div className="flex h-screen items-center justify-center bg-white">
+              <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          );
+        }
+
         return (
           <ExamTaker
-            onExit={() => { setCurrentPage('lesson-view'); setActiveExamLessonId(null); }}
+            onExit={() => { setCurrentPage('lesson-view'); setActiveExamLessonId(null); setDynamicExamQuestions([]); }}
             onComplete={handleUnitExamComplete}
             examData={{
               title: 'Unit Knowledge Assessment',
               initialAnswers: activeUnitProgress?.quiz_answers,
-              questions: UNIT_EXAMS[activeExamLessonId!] || [],
+              questions: dynamicExamQuestions,
               isCompleted: activeUnitProgress?.quiz_score !== undefined && activeUnitProgress.quiz_score >= 50
             }}
           />

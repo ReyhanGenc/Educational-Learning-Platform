@@ -63,6 +63,7 @@ export interface Chapter {
   course_id: string;
   title: string;
   order: number;
+  content_blocks?: any[]; // New field for chapter-level content/intro
   lessons?: Lesson[];
 }
 
