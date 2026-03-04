@@ -138,21 +138,31 @@ const AppContent: React.FC = () => {
       // 4. Fetch featured lessons for landing page
       const { data: featuredData } = await supabase
         .from('lessons')
-        .select('id, title, chapters!inner(title, courses!inner(id, title, category, image))')
+        .select('id, title, category, image_url, content_blocks, chapters(title, courses(id, title, category, image))')
         .limit(6);
 
       if (featuredData) {
         const flattenedFeatured = (featuredData as any[]).map(item => {
           const chapter = Array.isArray(item.chapters) ? item.chapters[0] : item.chapters;
           const course = chapter ? (Array.isArray(chapter.courses) ? chapter.courses[0] : chapter.courses) : null;
+
+          let description = '';
+          if (item.content_blocks && Array.isArray(item.content_blocks)) {
+            const textBlock = item.content_blocks.find((b: any) => b.type === 'text');
+            if (textBlock) {
+              description = textBlock.content.replace(/<[^>]*>/g, '').substring(0, 100) + '...';
+            }
+          }
+
           return {
             id: item.id,
             title: item.title,
+            description: description || 'Educational subject explanation.',
             chapterTitle: chapter?.title || '',
             courseId: course?.id || '',
-            courseTitle: course?.title || '',
-            category: course?.category || 'Educational',
-            image: course?.image
+            courseTitle: course?.title || 'Standalone Subject',
+            category: item.category || course?.category || 'Educational',
+            image: item.image_url || course?.image || `https://picsum.photos/seed/${item.id}/600/400`
           };
         });
         setFeaturedLessons(flattenedFeatured);

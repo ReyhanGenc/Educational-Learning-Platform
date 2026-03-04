@@ -44,8 +44,8 @@ const LessonsList: React.FC<LessonsListProps> = ({ onSelectTopic, onBack }) => {
             return {
               id: item.id,
               title: item.title,
-              category: course?.category || 'Educational',
-              image: course?.image || `https://picsum.photos/seed/${item.id}/1200/800`,
+              category: item.category || course?.category || 'Educational',
+              image: item.image_url || course?.image || `https://picsum.photos/seed/${item.id}/1200/800`,
               description: description || `Subject lesson from the ${course?.title || 'academic'} course.`,
               courseTitle: course?.title
             };
@@ -67,11 +67,10 @@ const LessonsList: React.FC<LessonsListProps> = ({ onSelectTopic, onBack }) => {
     return dbLessons;
   }, [dbLessons]);
 
-  // Extract unique topics (categories) for the filter
+  // Use fixed categories for consistency with the instructor panel
   const topics = useMemo(() => {
-    const uniqueTopics = Array.from(new Set(lessons.map(l => l.category)));
-    return ['All Topics', ...uniqueTopics];
-  }, [lessons]);
+    return ['All Topics', 'History', 'Chemistry', 'Biology', 'Math', 'Physics', 'Art', 'Geography', 'Music'];
+  }, []);
 
   const filteredLessons = useMemo(() => {
     return lessons.filter(l => {

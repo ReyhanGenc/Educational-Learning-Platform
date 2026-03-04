@@ -60,6 +60,7 @@ const Management: React.FC = () => {
   const [courseTitle, setCourseTitle] = useState('');
   const [courseDescription, setCourseDescription] = useState('');
   const [courseCategory, setCourseCategory] = useState('Math');
+  const [lessonCategory, setLessonCategory] = useState('Math');
 
   const categories = ['History', 'Chemistry', 'Biology', 'Math', 'Physics', 'Art', 'Geography', 'Music'];
 
@@ -80,17 +81,32 @@ const Management: React.FC = () => {
     setLoading(true);
     const userId = user?.id;
     try {
-      console.log('Fetching management data for:', { userId, instructorName });
-
       if (activeTab === 'courses') {
-        const { data, error } = await supabase
+        // Use separate queries to avoid problematic OR filter parsing with spaces/special chars
+        const { data: ownedData, error: ownedError } = await supabase
           .from('courses')
           .select('*, chapters(id, lessons(id))')
-          .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
-        if (error) console.error('Error fetching courses:', error);
-        setRealCourses(data || []);
+        const { data: taughtData, error: taughtError } = await supabase
+          .from('courses')
+          .select('*, chapters(id, lessons(id))')
+          .eq('instructor', instructorName)
+          .order('created_at', { ascending: false });
+
+        if (ownedError) console.error('Error fetching owned courses:', ownedError);
+        if (taughtError) console.error('Error fetching taught courses:', taughtError);
+
+        // Merge and deduplicate
+        const combined = [...(ownedData || [])];
+        (taughtData || []).forEach((tc: any) => {
+          if (!combined.find(c => c.id === tc.id)) {
+            combined.push(tc);
+          }
+        });
+
+        setRealCourses(combined);
       } else if (activeTab === 'exams') {
         const { data, error } = await supabase
           .from('exams')
@@ -108,15 +124,56 @@ const Management: React.FC = () => {
           setRealExams(data || []);
         }
       } else if (activeTab === 'lessons') {
-        // Lessons filter is complex because it depends on joined tables
-        const { data, error } = await supabase
-          .from('lessons')
-          .select('*, chapters!inner(title, courses!inner(title, instructor, user_id))')
-          .or(`user_id.eq.${userId},chapters.courses.instructor.eq."${instructorName}",chapters.courses.user_id.eq.${userId}`)
-          .order('created_at', { ascending: false });
+        // 1. Get IDs of courses owned/taught by the user (Separate queries to avoid OR parser issues)
+        const { data: ownedC } = await supabase.from('courses').select('id').eq('user_id', userId);
+        const { data: taughtC } = await supabase.from('courses').select('id').eq('instructor', instructorName);
 
-        if (error) console.error('Error fetching lessons:', error);
-        setRealLessons(data || []);
+        const courseIds = [...new Set([
+          ...(ownedC?.map(c => c.id) || []),
+          ...(taughtC?.map(c => c.id) || [])
+        ])];
+
+        // 2. Get Chapter IDs for those courses
+        let chapterIds: string[] = [];
+        if (courseIds.length > 0) {
+          const { data: instChapters, error: chErr } = await supabase
+            .from('chapters')
+            .select('id')
+            .in('course_id', courseIds);
+
+          if (chErr) console.error('Error fetching chapters for lessons:', chErr);
+          chapterIds = instChapters?.map(c => c.id) || [];
+        }
+
+        // 3. Fetch lessons: either owned by user OR in those chapters
+        let lessons: any[] = [];
+
+        // Fetch lessons owned by user
+        const { data: ownedLessons, error: olErr } = await supabase
+          .from('lessons')
+          .select('*, chapters(title, courses(title, instructor, user_id))')
+          .eq('user_id', userId);
+
+        if (olErr) console.error('Error fetching owned lessons:', olErr);
+        lessons = [...(ownedLessons || [])];
+
+        // Fetch lessons in chapters
+        if (chapterIds.length > 0) {
+          const { data: chapterLessons, error: clErr } = await supabase
+            .from('lessons')
+            .select('*, chapters(title, courses(title, instructor, user_id))')
+            .in('chapter_id', chapterIds);
+
+          if (clErr) console.error('Error fetching chapter lessons:', clErr);
+
+          (chapterLessons || []).forEach((cl: any) => {
+            if (!lessons.find(l => l.id === cl.id)) {
+              lessons.push(cl);
+            }
+          });
+        }
+
+        setRealLessons(lessons.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       }
     } catch (err) {
       console.error('Error fetching management data:', err);
@@ -186,6 +243,7 @@ const Management: React.FC = () => {
     } else if (type === 'lesson') {
       setLessonBlocks([{ id: 'l-new', type: 'text', content: '' }]);
       setLessonImage(null);
+      setLessonCategory('Math');
       setView('create-lesson');
     }
   };
@@ -233,6 +291,7 @@ const Management: React.FC = () => {
     } else if (type === 'lesson') {
       setLessonBlocks(item.content_blocks || []);
       setLessonImage(item.image_url);
+      setLessonCategory(item.category || 'Math');
       setView('create-lesson');
     }
   };
@@ -418,15 +477,26 @@ const Management: React.FC = () => {
     try {
       const lessonData: any = {
         title: selectedItem?.title || 'New Lesson',
+        category: lessonCategory,
         content_blocks: lessonBlocks,
         image_url: lessonImage,
         user_id: user?.id
       };
 
+      let error;
       if (selectedItem?.id) {
-        await supabase.from('lessons').update(lessonData).eq('id', selectedItem.id);
+        const { error: err } = await supabase.from('lessons').update(lessonData).eq('id', selectedItem.id);
+        error = err;
       } else {
-        await supabase.from('lessons').insert(lessonData);
+        const { error: err } = await supabase.from('lessons').insert(lessonData);
+        error = err;
+      }
+
+      if (error) {
+        console.error('Error saving lesson:', error);
+        alert(`Error saving lesson: ${error.message}`);
+        setLoading(false);
+        return;
       }
 
       setView('list');
@@ -848,8 +918,8 @@ const Management: React.FC = () => {
                       }}
                       className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/10 hover:bg-brand-500 transition-all flex items-center justify-center gap-3"
                     >
-                      <span className="material-symbols-outlined font-black">terminal</span>
-                      Architect Chapter-Specific Assessment Theory
+                      <span className="material-symbols-outlined font-black">quiz</span>
+                      Create Chapter Assessment Exam
                     </button>
                   )}
                 </div>
@@ -869,7 +939,7 @@ const Management: React.FC = () => {
           </div>
           <button onClick={handleSaveLesson} disabled={loading} className="bg-brand-500 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-500/20 active:scale-95 flex items-center gap-2">
             <span className="material-symbols-outlined text-sm font-black">{loading ? 'sync' : 'rocket_launch'}</span>
-            {loading ? 'Syncing...' : 'Commit Explanation'}
+            {loading ? 'Saving...' : 'Save Lesson Content'}
           </button>
         </header>
 
@@ -896,15 +966,33 @@ const Management: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-1 gap-12">
           <div className="space-y-10">
             <div className="bg-white p-10 rounded-[40px] border border-slate-300 shadow-sm space-y-8">
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Lesson Nomenclature</label>
-                <input
-                  type="text"
-                  value={selectedItem?.title || ''}
-                  onChange={(e) => setSelectedItem({ ...selectedItem, title: e.target.value })}
-                  placeholder="e.g. Molecular Bond Heuristics"
-                  className="w-full bg-slate-100 border border-slate-200 p-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Lesson Nomenclature</label>
+                  <input
+                    type="text"
+                    value={selectedItem?.title || ''}
+                    onChange={(e) => setSelectedItem({ ...selectedItem, title: e.target.value })}
+                    placeholder="e.g. Molecular Bond Heuristics"
+                    className="w-full bg-slate-100 border border-slate-200 p-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500"
+                  />
+                </div>
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Scientific Discipline (Subject)</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">category</span>
+                    <select
+                      value={lessonCategory}
+                      onChange={(e) => setLessonCategory(e.target.value)}
+                      className="w-full bg-slate-100 border border-slate-200 pl-16 pr-6 py-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500 appearance-none transition-all cursor-pointer"
+                    >
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+                  </div>
+                </div>
               </div>
               <div className="space-y-6">
                 {lessonBlocks.map((block) => (
@@ -1304,10 +1392,10 @@ const Management: React.FC = () => {
                   {item.title}
                 </h3>
 
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Integrated Pipeline</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Subject Category</p>
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex-1">
-                  <p className="text-[9px] font-black text-slate-700 uppercase tracking-[0.1em] mb-1">Target Repository</p>
-                  <p className="text-[11px] font-black text-slate-900 uppercase tracking-tighter truncate">{item.chapters?.courses?.title || 'Standalone Pipeline'}</p>
+                  <p className="text-[9px] font-black text-slate-700 uppercase tracking-[0.1em] mb-1">Assigned Discipline</p>
+                  <p className="text-[11px] font-black text-slate-900 uppercase tracking-tighter truncate">{item.category || 'Mathematics'}</p>
                 </div>
 
                 <div className="flex items-center justify-between mt-10 pt-8 border-t border-slate-100">
@@ -1333,8 +1421,8 @@ const Management: React.FC = () => {
                   <span className="material-symbols-outlined text-5xl">inventory_2</span>
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Repository Empty</h3>
-                  <p className="text-slate-500 font-medium max-w-sm mx-auto mt-2">No {activeTab} discovered in your local faculty node. Start architecting now.</p>
+                  <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">List Empty</h3>
+                  <p className="text-slate-500 font-medium max-w-sm mx-auto mt-2">No {activeTab} found in your account. Start creating now.</p>
                 </div>
                 <button
                   onClick={() => {
@@ -1344,7 +1432,7 @@ const Management: React.FC = () => {
                   }}
                   className="bg-brand-50 text-brand-500 px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-500 hover:text-white transition-all active:scale-95"
                 >
-                  Initiate Architect Mode
+                  Create New Content
                 </button>
               </div>
             )}

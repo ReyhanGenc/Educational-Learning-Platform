@@ -32,7 +32,7 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
                     setTopic({
                         id: data.id,
                         title: data.title,
-                        category: course?.category || 'Educational',
+                        category: data.category || course?.category || 'Educational',
                         content: data.content,
                         content_blocks: data.content_blocks,
                         courseTitle: course?.title
