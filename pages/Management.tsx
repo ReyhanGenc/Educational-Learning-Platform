@@ -59,6 +59,9 @@ const Management: React.FC = () => {
   const [sourceCourse, setSourceCourse] = useState<any>(null);
   const [courseTitle, setCourseTitle] = useState('');
   const [courseDescription, setCourseDescription] = useState('');
+  const [courseCategory, setCourseCategory] = useState('Math');
+
+  const categories = ['History', 'Chemistry', 'Biology', 'Math', 'Physics', 'Art', 'Geography', 'Music'];
 
   const { user, userMetadata } = useAuth();
   const instructorName = userMetadata?.full_name || 'Anonymous Instructor';
@@ -93,12 +96,13 @@ const Management: React.FC = () => {
           .from('exams')
           .select('*')
           .eq('user_id', userId)
+          .is('chapter_id', null) // Filter out course-specific unit exams
           .order('created_at', { ascending: false });
 
         if (error) {
           console.error('Error fetching exams:', error);
-          // Fallback to all exams if user_id filter fails for some reason
-          const { data: all } = await supabase.from('exams').select('*').limit(20);
+          // Fallback to standalone exams if user_id filter fails
+          const { data: all } = await supabase.from('exams').select('*').is('chapter_id', null).limit(20);
           setRealExams(all || []);
         } else {
           setRealExams(data || []);
@@ -157,6 +161,7 @@ const Management: React.FC = () => {
       setCoursePrice('0.00');
       setCourseTitle('');
       setCourseDescription('');
+      setCourseCategory('Math');
       setExamCreatedStatus(null);
       setView('create-course');
     } else if (type === 'exam') {
@@ -214,9 +219,10 @@ const Management: React.FC = () => {
       }
       setActiveChapterIndex(0);
       setCourseImage(item.image);
-      setCoursePrice(item.price?.toString() || '0.00');
+      setCoursePrice(item.price ? Number(item.price).toFixed(2) : '0.00');
       setCourseTitle(item.title || '');
       setCourseDescription(item.description || '');
+      setCourseCategory(item.category || 'Math');
       setLoading(false);
       setView('create-course');
     } else if (type === 'exam') {
@@ -332,9 +338,9 @@ const Management: React.FC = () => {
         title: courseTitle || 'Untitled Course',
         description: courseDescription || '',
         image: courseImage,
-        category: selectedItem?.category || 'Instructional',
         instructor: instructorName,
-        price: coursePrice || '0.00',
+        price: Math.round(parseFloat(coursePrice) * 100) / 100 || 0,
+        category: courseCategory,
         level: selectedItem?.level || 'Beginner',
         rating: selectedItem?.rating || 5,
         total_duration: selectedItem?.total_duration || '2h',
@@ -433,10 +439,21 @@ const Management: React.FC = () => {
   };
 
   const handleSaveExam = async () => {
-    if (!selectedItem && !selectedItem?.title) return;
+    // For new exams, selectedItem might be null, so we check for title in the state/questions
     setLoading(true);
+    const finalTitle = selectedItem?.title || 'New Professional Exam';
+    const finalSubject = selectedItem?.subject || 'Math';
+
+    // Choose color based on subject
+    let finalColor = 'brand';
+    if (['History', 'Art'].includes(finalSubject)) finalColor = 'orange';
+    else if (['Chemistry', 'Geography', 'Biology'].includes(finalSubject)) finalColor = 'teal';
+    else if (['Physics', 'Music'].includes(finalSubject)) finalColor = 'purple';
+
     const examData: any = {
-      title: selectedItem?.title || 'New Exam',
+      title: finalTitle,
+      subject: finalSubject,
+      color: finalColor,
       questions: examQuestions,
       questions_count: examQuestions.length,
       instructor: instructorName,
@@ -710,6 +727,23 @@ const Management: React.FC = () => {
                   className="w-full bg-slate-100 border-2 border-slate-200 p-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500"
                 />
               </div>
+
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Master Category (Branch)</label>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">category</span>
+                  <select
+                    value={courseCategory}
+                    onChange={(e) => setCourseCategory(e.target.value)}
+                    className="w-full bg-slate-100 border-2 border-slate-200 pl-16 pr-6 py-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500 appearance-none transition-all cursor-pointer"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+                </div>
+              </div>
               <div className="space-y-4">
                 <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Master Deployment Valuation (Price)</label>
                 <div className="relative">
@@ -955,28 +989,55 @@ const Management: React.FC = () => {
     content = (
       <div className="min-h-full bg-[#f1f5f9] animate-fade-in flex flex-col items-center justify-center p-6 lg:p-12 pb-32">
         <div className="w-full max-w-4xl space-y-8">
-          <header className="flex items-center justify-between bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm w-full">
-            <div className="flex items-center gap-6">
-              <button onClick={() => {
-                if (window.confirm("Are you sure you want to go back? All unsaved questions in this session will be permanently cleared.")) {
-                  setView(preExamView);
-                  // Clear questions after moving away to avoid race condition/render crash
-                  setTimeout(() => setExamQuestions([]), 100);
-                }
-              }} className="material-symbols-outlined w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl transition-all text-slate-900 font-black">arrow_back</button>
-              <div>
-                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Assessment Architect</h2>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse"></div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Designing Strategic Pipeline</span>
+          <header className="flex flex-col gap-6 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm w-full">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-6">
+                <button onClick={() => {
+                  if (window.confirm("Are you sure you want to go back? All unsaved questions in this session will be permanently cleared.")) {
+                    setView(preExamView);
+                    // Clear questions after moving away to avoid race condition/render crash
+                    setTimeout(() => setExamQuestions([]), 100);
+                  }
+                }} className="material-symbols-outlined w-12 h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl transition-all text-slate-900 font-black">arrow_back</button>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Assessment Architect</h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Designing Strategic Pipeline</span>
+                  </div>
                 </div>
               </div>
+              <div className="flex items-center gap-4">
+                <button onClick={handleSaveExam} disabled={loading} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/10 active:scale-95 flex items-center gap-2 transition-all">
+                  <span className="material-symbols-outlined text-sm font-black">{loading ? 'sync' : 'publish'}</span>
+                  {loading ? 'Committing...' : 'Finalize & Deploy'}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <button onClick={handleSaveExam} disabled={loading} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/10 active:scale-95 flex items-center gap-2 transition-all">
-                <span className="material-symbols-outlined text-sm font-black">{loading ? 'sync' : 'publish'}</span>
-                {loading ? 'Committing...' : 'Finalize & Deploy'}
-              </button>
+
+            <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 block">Professional Exam Title</label>
+                <input
+                  type="text"
+                  placeholder="Enter a descriptive title for this examination..."
+                  value={selectedItem?.title || ''}
+                  onChange={(e) => setSelectedItem(prev => ({ ...(prev || {}), title: e.target.value }))}
+                  className="w-full bg-slate-50 border-2 border-slate-100 p-6 rounded-2xl outline-none focus:border-brand-500 font-bold text-slate-900 text-lg shadow-inner"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 block">Scientific Discipline</label>
+                <select
+                  value={selectedItem?.subject || 'Math'}
+                  onChange={(e) => setSelectedItem(prev => ({ ...(prev || {}), subject: e.target.value }))}
+                  className="w-full bg-slate-50 border-2 border-slate-100 p-6 rounded-2xl outline-none focus:border-brand-500 font-bold text-slate-900 text-lg shadow-inner appearance-none cursor-pointer"
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </header>
 
@@ -1128,7 +1189,7 @@ const Management: React.FC = () => {
         <div className="flex gap-10 border-b border-slate-200 shrink-0 overflow-x-auto custom-scrollbar-hide">
           {[
             { id: 'courses', label: 'Master Courses', icon: 'account_tree', count: realCourses.length },
-            { id: 'exams', label: 'Assessment Models', icon: 'terminal', count: realExams.length },
+            { id: 'exams', label: 'Professional Exams', icon: 'terminal', count: realExams.length },
             { id: 'lessons', label: 'Lesson Pipelines', icon: 'view_quilt', count: realLessons.length }
           ].map((tab) => (
             <button
@@ -1176,7 +1237,7 @@ const Management: React.FC = () => {
                 <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-sm text-slate-400 font-bold">payments</span>
-                    <span className="text-[10px] font-black text-slate-900">${item.price}</span>
+                    <span className="text-[10px] font-black text-slate-900">${Number(item.price).toFixed(2)}</span>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => startEditingArchitect('course', item)} className="w-11 h-11 bg-slate-50 text-slate-900 rounded-xl hover:bg-brand-500 hover:text-white transition-all shadow-sm flex items-center justify-center">
@@ -1190,46 +1251,48 @@ const Management: React.FC = () => {
               </div>
             ))}
 
-            {activeTab === 'exams' && realExams.map((item, idx) => (
-              <div key={idx} className="bg-slate-900 rounded-[40px] p-10 shadow-2xl hover:shadow-brand-500/20 transition-all duration-500 group relative flex flex-col min-h-[400px]">
-                <div className="w-16 h-16 bg-brand-500/20 rounded-[22px] flex items-center justify-center mb-10 border border-brand-500/30">
-                  <span className="material-symbols-outlined text-3xl font-black text-brand-500">terminal</span>
-                </div>
+            {activeTab === 'exams' && realExams.map((item, idx) => {
+              const examColor = item.color || 'brand';
+              const colorMap: any = {
+                brand: { bg: 'bg-brand-500', text: 'text-brand-500', light: 'bg-brand-50', border: 'border-brand-100' },
+                purple: { bg: 'bg-purple-500', text: 'text-purple-500', light: 'bg-purple-50', border: 'border-purple-100' },
+                teal: { bg: 'bg-teal-500', text: 'text-teal-500', light: 'bg-teal-50', border: 'border-teal-100' },
+                orange: { bg: 'bg-orange-500', text: 'text-orange-500', light: 'bg-orange-50', border: 'border-orange-100' }
+              };
+              const theme = colorMap[examColor] || colorMap.brand;
 
-                <h3 onClick={() => handleTitleClick(item, 'view-exam')} className="text-2xl font-black text-white uppercase tracking-tight mb-4 group-hover:text-brand-400 transition-colors cursor-pointer leading-tight">
-                  {item.title}
-                </h3>
-
-                <div className="flex flex-wrap gap-2 mb-auto">
-                  <span className="bg-white/5 text-slate-400 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border border-white/10">{item.subject}</span>
-                  <span className="bg-brand-500/10 text-brand-400 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border border-brand-500/20">{item.question_count || 0} ITEMS</span>
-                </div>
-
-                <div className="flex items-center justify-between mt-10 pt-8 border-t border-white/10">
-                  {/* The provided code snippet for 'chapter' rendering is placed here.
-                        However, 'chapter' is not defined in the context of mapping 'realExams'.
-                        Inserting it directly would cause a syntax error and logical inconsistency.
-                        The instruction also mentions updating 'CourseDetails.tsx' for rendering blocks,
-                        which suggests this snippet might belong in a different file or context.
-                        To maintain syntactical correctness and avoid unrelated edits,
-                        this specific block cannot be inserted here as provided.
-                        The original structure around this point will be preserved.
-                    */}
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Logic Model</span>
-                    <span className="text-[10px] font-black text-white uppercase tracking-wider">{item.priority || 'Standard'}</span>
+              return (
+                <div key={idx} className="bg-white rounded-[40px] p-10 border border-slate-200 shadow-sm hover:shadow-2xl hover:border-brand-500/20 transition-all duration-500 group relative flex flex-col min-h-[420px]">
+                  <div className={`w-16 h-16 ${theme.light} rounded-[22px] flex items-center justify-center mb-10 border ${theme.border} shadow-inner`}>
+                    <span className={`material-symbols-outlined text-3xl font-black ${theme.text}`}>terminal</span>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => startEditingArchitect('exam', item)} className="w-11 h-11 bg-white/5 text-white rounded-xl hover:bg-white/20 transition-all flex items-center justify-center">
-                      <span className="material-symbols-outlined text-lg font-black">edit</span>
-                    </button>
-                    <button onClick={() => handleDeleteClick(item.title, item.id)} className="w-11 h-11 bg-white/5 text-red-400 rounded-xl hover:bg-red-600/20 hover:text-red-400 transition-all flex items-center justify-center">
-                      <span className="material-symbols-outlined text-lg font-black">delete</span>
-                    </button>
+
+                  <h3 onClick={() => handleTitleClick(item, 'view-exam')} className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-4 group-hover:text-brand-500 transition-colors cursor-pointer leading-tight">
+                    {item.title}
+                  </h3>
+
+                  <div className="flex flex-wrap gap-2 mb-auto">
+                    <span className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${theme.light} ${theme.text} ${theme.border}`}>{item.subject || 'Strategic'}</span>
+                    <span className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border border-slate-200">{item.questions_count || (Array.isArray(item.questions) ? item.questions.length : 0)} QUESTIONS</span>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-10 pt-8 border-t border-slate-100">
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Logic Model</span>
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-wider">{item.priority || 'Standard'}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => startEditingArchitect('exam', item)} className="w-11 h-11 bg-slate-50 text-slate-900 rounded-xl hover:bg-brand-500 hover:text-white transition-all flex items-center justify-center border border-slate-100">
+                        <span className="material-symbols-outlined text-lg font-black">edit</span>
+                      </button>
+                      <button onClick={() => handleDeleteClick(item.title, item.id)} className="w-11 h-11 bg-slate-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all flex items-center justify-center border border-slate-100">
+                        <span className="material-symbols-outlined text-lg font-black">delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {activeTab === 'lessons' && realLessons.map((item, idx) => (
               <div key={idx} className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm hover:shadow-2xl hover:border-brand-500/30 transition-all duration-500 group relative flex flex-col min-h-[450px]">

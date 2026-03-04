@@ -92,25 +92,17 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
 
     const ch = chapters[chIndex];
     const introDone = getIntroStatus(ch.id) === 'Completed';
-    const lessonsDone = ch.lessons && ch.lessons.length > 0 && ch.lessons.every(l => {
-      const progress = course?.lesson_progress?.[l.id];
-      const isLegacy = course?.completed_lesson_ids?.includes(l.id);
-      return (progress?.read || isLegacy) && ((progress?.quiz_score || 0) >= 50 || isLegacy);
-    });
+    const examDone = (course?.lesson_progress?.[ch.id]?.quiz_score || 0) >= 50;
 
-    if (introDone && lessonsDone) return 'Completed';
+    if (introDone && examDone) return 'Completed';
     if (chIndex === 0) return 'Open';
 
     // A chapter is OPEN if the PREVIOUS chapter is COMPLETED
     const prevCh = chapters[chIndex - 1];
     const prevIntroDone = getIntroStatus(prevCh.id) === 'Completed';
-    const prevLessonsDone = prevCh.lessons && prevCh.lessons.length > 0 && prevCh.lessons.every(l => {
-      const progress = course?.lesson_progress?.[l.id];
-      const isLegacy = course?.completed_lesson_ids?.includes(l.id);
-      return (progress?.read || isLegacy) && ((progress?.quiz_score || 0) >= 50 || isLegacy);
-    });
+    const prevExamDone = (course?.lesson_progress?.[prevCh.id]?.quiz_score || 0) >= 50;
 
-    if (prevIntroDone && prevLessonsDone) return 'Open';
+    if (prevIntroDone && prevExamDone) return 'Open';
     return 'Locked';
   };
 
@@ -126,14 +118,34 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
 
       if (!enrollment) return;
 
-      const newProgress = {
+      const newProgressMap = {
         ...(enrollment.lesson_progress || {}),
         [`intro-${chapterId}`]: { read: true }
       };
 
+      // Recalculate progress using the 50/50 model
+      let totalPointsEarned = 0;
+      let totalChaptersCount = chapters.length || 1;
+      let totalPointsPossible = totalChaptersCount * 100;
+
+      chapters.forEach((ch: any) => {
+        const introDone = newProgressMap[`intro-${ch.id}`]?.read;
+        const examDone = (newProgressMap[ch.id]?.quiz_score || 0) >= 50;
+
+        // Konu/Explanation = 50 pts
+        if (introDone) totalPointsEarned += 50;
+        // Exam = 50 pts
+        if (examDone) totalPointsEarned += 50;
+      });
+
+      const newGlobalProgress = totalPointsPossible > 0 ? Math.round((totalPointsEarned / totalPointsPossible) * 100) : 0;
+
       await supabase
         .from('enrollments')
-        .update({ lesson_progress: newProgress })
+        .update({
+          lesson_progress: newProgressMap,
+          progress: newGlobalProgress
+        })
         .eq('id', enrollment.id);
 
       setViewingIntro(null);
@@ -179,10 +191,20 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
           <div className="mt-20 pt-10 border-t border-slate-100 flex justify-center">
             <button
               onClick={() => handleCompleteIntro(viewingIntro.id)}
-              className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-2xl hover:bg-brand-500 transition-all active:scale-95 flex items-center gap-4"
+              className="px-8 py-5 bg-slate-100 text-slate-700 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-sm hover:bg-slate-200 transition-all active:scale-95 flex items-center gap-4 border border-slate-200"
             >
               <span className="material-symbols-outlined font-black">verified</span>
               Understood & Continue
+            </button>
+            <button
+              onClick={() => {
+                handleCompleteIntro(viewingIntro.id);
+                onTakeExam(viewingIntro.id, viewingIntro.title);
+              }}
+              className="px-10 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-2xl hover:bg-brand-500 transition-all active:scale-95 flex items-center gap-4"
+            >
+              <span className="material-symbols-outlined font-black">quiz</span>
+              Start Unit Exam
             </button>
           </div>
         </div>
@@ -241,19 +263,39 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
                   const isChLocked = chStatus === 'Locked';
                   const isChCompleted = chStatus === 'Completed';
                   const introStatus = getIntroStatus(chapter.id);
+                  const isExamSolved = (course?.lesson_progress?.[chapter.id]?.quiz_score || 0) >= 50;
+
+                  // 50/50 Split Progress for the Unit
+                  const subjectProgress = introStatus === 'Completed' ? 50 : 0;
+                  const examProgress = isExamSolved ? 50 : 0;
+                  const totalChProgress = subjectProgress + examProgress;
 
                   return (
                     <div key={chapter.id} className={`bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden transition-all duration-500
                                 ${isChLocked ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100 grayscale-0'}
                     `}>
-                      <div className={`p-8 border-b border-slate-100 flex flex-col gap-2 ${isChCompleted ? 'bg-emerald-50/30' : 'bg-slate-50/50'}`}>
+                      <div className={`p-8 border-b border-slate-100 flex flex-col gap-4 ${isChCompleted ? 'bg-emerald-50/30' : 'bg-slate-50/50'}`}>
                         <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                            <span className={`w-2 h-2 rounded-full ${isChCompleted ? 'bg-emerald-500' : 'bg-brand-500'}`}></span>
-                            {chapter.title}
-                          </h4>
+                          <div className="flex flex-col gap-1">
+                            <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                              <span className={`w-2.5 h-2.5 rounded-full ${isChCompleted ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-brand-500 shadow-[0_0_10px_rgba(72,80,229,0.5)]'}`}></span>
+                              {chapter.title}
+                            </h4>
+                            <div className="flex items-center gap-2 mt-2">
+                              <div className="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden p-[1px]">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-1000 ${totalChProgress === 100 ? 'bg-emerald-500' : 'bg-brand-500'}`}
+                                  style={{ width: `${totalChProgress}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-[9px] font-black text-slate-500">{totalChProgress}% PROGRESS</span>
+                            </div>
+                          </div>
                           {isChCompleted && (
-                            <span className="material-symbols-outlined text-emerald-500 font-black animate-bounce-in">check_circle</span>
+                            <div className="flex items-center gap-2 bg-emerald-500 text-white px-3 py-1.5 rounded-full shadow-lg shadow-emerald-500/20">
+                              <span className="material-symbols-outlined text-sm font-black">verified</span>
+                              <span className="text-[9px] font-black uppercase tracking-widest">Mastered</span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -261,109 +303,67 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
                       <div className="p-4 space-y-4">
                         {/* Chapter Intro Button Item */}
                         <div
-                          className={`p-6 rounded-[24px] border flex items-center justify-between gap-4 transition-all group cursor-pointer
-                             ${introStatus === 'Completed' ? 'bg-slate-50 border-emerald-100' : 'bg-white border-slate-100 hover:border-brand-500 hover:shadow-md'}
-                           `}
+                          className={`p-8 rounded-[24px] border flex items-center justify-between gap-4 transition-all group cursor-pointer
+                               ${introStatus === 'Completed' ? 'bg-slate-50 border-emerald-100' : 'bg-white border-slate-100 hover:border-brand-500 hover:shadow-xl hover:-translate-y-1'}
+                             `}
                           onClick={() => setViewingIntro(chapter)}
                         >
-                          <div className="flex items-center gap-6">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border
-                              ${introStatus === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
-                            `}>
-                              <span className="material-symbols-outlined text-2xl font-bold">
+                          <div className="flex items-center gap-8">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border-2
+                                ${introStatus === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-brand-50 text-brand-600 border-brand-100'}
+                              `}>
+                              <span className="material-symbols-outlined text-3xl font-bold">
                                 {introStatus === 'Completed' ? 'verified' : 'auto_stories'}
                               </span>
                             </div>
                             <div>
-                              <h4 className={`text-sm font-black tracking-tight uppercase transition-colors group-hover:text-brand-500`}>{chapter.title}</h4>
-                              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Start unit from beginning</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {introStatus === 'Completed' ? (
-                              <span className="material-symbols-outlined text-emerald-500 font-bold">check_circle</span>
-                            ) : (
-                              <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors font-bold">arrow_forward_ios</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {chapter.lessons?.map((lesson) => {
-                          const { status, icon } = getLessonStatus(lesson.id, chapter.id);
-                          const isLocked = status === 'Locked';
-                          return (
-                            <div
-                              key={lesson.id}
-                              className={`p-6 rounded-[24px] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all group 
-                                ${isLocked ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-brand-500 cursor-pointer hover:bg-slate-50 hover:shadow-md'}
-                              `}
-                              onClick={(e) => {
-                                if (!previewMode && !isLocked) onStartLesson(lesson.id);
-                                if (isLocked) alert(introStatus === 'Completed' ? 'Complete the previous lesson to unlock this one!' : 'Please read the Unit Intro first!');
-                              }}
-                            >
-                              <div className="flex items-center gap-6">
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border 
-                                            ${status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                    status === 'Partially Completed' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                      isLocked ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-brand-50 text-brand-600 border-brand-200'}
-                                        `}>
-                                  <span className="material-symbols-outlined text-2xl font-bold">{icon}</span>
-                                </div>
-                                <div>
-                                  <h4 className={`text-sm font-black tracking-tight uppercase transition-colors ${isLocked ? 'text-slate-500' : 'text-slate-900 group-hover:text-brand-500'}`}>{lesson.title}</h4>
-                                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Duration: {lesson.duration || '20m'}</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                {!isLocked && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onTakeExam(lesson.id, lesson.title);
-                                    }}
-                                    className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-600 transition-all flex items-center gap-2"
-                                  >
-                                    <span className="material-symbols-outlined text-sm text-brand-400">quiz</span>
-                                    Take Exam
-                                  </button>
-                                )}
-                                {!isLocked && <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors font-bold ml-2">arrow_forward_ios</span>}
-                                {isLocked && <span className="material-symbols-outlined text-slate-300 font-bold">lock</span>}
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        {/* Unit Assessment Item */}
-                        <div
-                          className={`p-6 rounded-[24px] border flex items-center justify-between gap-4 transition-all group cursor-pointer mt-4
-                             ${isChCompleted ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-900 text-white border-slate-800 hover:bg-brand-500'}
-                             ${introStatus !== 'Completed' ? 'opacity-50 grayscale pointer-events-none' : ''}
-                           `}
-                          onClick={() => onTakeExam(chapter.id, chapter.title)}
-                        >
-                          <div className="flex items-center gap-6">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border
-                              ${isChCompleted ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 'bg-white/10 text-white border-white/20'}
-                            `}>
-                              <span className="material-symbols-outlined text-2xl font-bold">
-                                {isChCompleted ? 'verified' : 'fact_check'}
-                              </span>
-                            </div>
-                            <div>
-                              <h4 className={`text-sm font-black tracking-tight uppercase`}>Unit Final Assessment</h4>
-                              <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${isChCompleted ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                {isChCompleted ? 'Assessment Mastered' : 'Unlock after lessons'}
+                              <h4 className={`text-base font-black tracking-tight uppercase transition-colors group-hover:text-brand-500`}>Subject Explanation</h4>
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1.5 flex items-center gap-2">
+                                {introStatus === 'Completed' ? (
+                                  <span className="text-emerald-600 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">check_circle</span> STUDY COMPLETED</span>
+                                ) : 'Start interactive unit study'}
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {isChCompleted ? (
-                              <span className="material-symbols-outlined text-emerald-500 font-bold">check_circle</span>
+                            {introStatus === 'Completed' ? (
+                              <span className="material-symbols-outlined text-emerald-500 text-3xl font-bold">verified</span>
                             ) : (
-                              <span className="material-symbols-outlined text-white/30 group-hover:text-white transition-colors font-bold">arrow_forward_ios</span>
+                              <span className="material-symbols-outlined text-slate-300 group-hover:text-brand-500 transition-colors text-2xl font-bold">arrow_forward</span>
+                            )}
+                          </div>
+                        </div>
+
+
+                        <div
+                          className={`p-8 rounded-[24px] border flex items-center justify-between gap-4 transition-all group cursor-pointer mt-4
+                               ${isExamSolved ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-900 text-white border-slate-800 hover:bg-brand-500 hover:shadow-xl hover:-translate-y-1'}
+                               ${introStatus !== 'Completed' ? 'opacity-50 grayscale pointer-events-none' : ''}
+                             `}
+                          onClick={() => onTakeExam(chapter.id, chapter.title)}
+                        >
+                          <div className="flex items-center gap-8">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border-2
+                                ${isExamSolved ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white/10 text-white border-white/20'}
+                              `}>
+                              <span className="material-symbols-outlined text-3xl font-bold">
+                                {isExamSolved ? 'verified' : 'fact_check'}
+                              </span>
+                            </div>
+                            <div>
+                              <h4 className={`text-base font-black tracking-tight uppercase`}>Unit Final Assessment</h4>
+                              <p className={`text-[10px] font-black uppercase tracking-widest mt-1.5 flex items-center gap-2 ${isExamSolved ? 'text-emerald-100' : 'text-slate-400'}`}>
+                                {isExamSolved ? (
+                                  <span className="flex items-center gap-1 text-emerald-400"><span className="material-symbols-outlined text-[14px]">check_box</span> ASSESSMENT COMPLETED</span>
+                                ) : (introStatus === 'Completed' ? 'Verify your knowledge' : 'Unlock after subject study')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isExamSolved ? (
+                              <span className="material-symbols-outlined text-emerald-500 text-3xl font-bold">check_circle</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-white/30 group-hover:text-white transition-colors text-2xl font-bold">arrow_forward</span>
                             )}
                           </div>
                         </div>

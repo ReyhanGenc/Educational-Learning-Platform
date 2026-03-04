@@ -57,7 +57,8 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
         const { data: eData } = await supabase.from('exams').select('*').eq('id', examId).single();
         if (eData) {
           setExam(eData as any);
-          const durationSecs = (eData.questions || 10) * 2 * 60;
+          const qCount = eData.questions_count || (Array.isArray(eData.questions) ? eData.questions.length : (parseInt(eData.questions) || 10));
+          const durationSecs = qCount * 2 * 60;
 
           // Check if user already took this exam
           if (user) {
@@ -70,10 +71,11 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
             if (resultId) {
               query = query.eq('id', resultId);
             } else {
-              query = query.order('created_at', { ascending: false }).limit(1);
+              query = query.limit(1);
             }
 
-            const { data: rData } = await query.maybeSingle();
+            const { data: rData, error: rError } = await query.maybeSingle();
+            if (rError) console.error('ExamTaker: Error fetching previous result:', rError);
 
             if (rData) {
               setReviewMode(true);
@@ -95,9 +97,12 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
         const { data: qData } = await supabase.from('exam_questions').select('*').eq('exam_id', examId).order('order_num', { ascending: true });
         if (qData && qData.length > 0) {
           setQuestions(qData as any);
+        } else if (eData && Array.isArray(eData.questions)) {
+          // Local/Unit Exam: questions are stored as JSON in the exams table
+          setQuestions(eData.questions as any);
         } else if (eData) {
-          // Fallback to generate mock questions if table has no entries for this exam
-          const totalQ = eData.questions || 10;
+          // Fallback to generate mock questions if no content is found
+          const totalQ = typeof eData.questions === 'number' ? eData.questions : (Array.isArray(eData.questions) ? eData.questions.length : 10);
           const mockQ = Array.from({ length: totalQ }).map((_, i) => ({
             id: `mock-${i}`,
             exam_id: examId,
@@ -131,17 +136,18 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
 
     // 1. Calculate Score (Works for both DB exams and Local Unit exams)
     if (questions.length > 0) {
-      questions.forEach((q, idx) => {
+      questions.forEach((q: any, idx) => {
         const answer = answers[idx + 1];
         if (answer) {
-          if (answer === q.correct_option_id) {
+          const correctId = q.correct_option_id || q.correctOptionId;
+          if (answer === correctId) {
             correctCount++;
           } else {
             incorrectCount++;
           }
         }
       });
-      score = Math.round((correctCount / questions.length) * 100);
+      score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
     } else {
       score = 100; // Default fallback
     }
@@ -154,23 +160,22 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
         const { data: resultData, error } = await supabase.from('exam_results').insert({
           user_id: user.id,
           exam_id: examId,
-          score,
+          score: score || 0,
           total_questions: questions.length,
           correct_answers: correctCount,
           incorrect_answers: incorrectCount,
-          time_spent_seconds: timeSpent,
+          time_spent_seconds: Math.floor(timeSpent || 0),
           answers: answers
-        }).select().single();
+        }).select().maybeSingle();
 
-        if (error) throw error;
-
-        if (onSubmit) {
-          onSubmit(resultData.id);
+        if (error) {
+          console.error('Error saving exam result:', error);
+        } else if (onSubmit) {
+          onSubmit(resultData?.id || null);
           return;
         }
       } catch (err: any) {
         console.error('Error saving exam result:', err);
-        alert(`Your exam result could not be saved! Please ensure you have added the 'answers' column in Supabase. Error: ${err.message}`);
       }
     }
 
@@ -220,9 +225,12 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
     { id: 'D', label: 'Chain Rule' },
   ];
 
-  const activeOptions = currentQData?.options ? currentQData.options : demoOptions;
+  const activeOptions = (currentQData as any)?.options ? (currentQData as any).options : demoOptions;
   const questionTitle = examId ? (exam?.title || 'Examination') : (examData?.title || 'Unit Assessment');
-  const questionText = currentQData ? currentQData.question_text : 'A student is calculating the derivative of f(x) = sin(x) * cos(x). Which of the following rules should be applied first to find the correct derivative?';
+
+  // Robust String conversion to prevent React crash if data is corrupted/object
+  const rawText = currentQData ? ((currentQData as any).question_text || (currentQData as any).text) : '...';
+  const questionText = typeof rawText === 'object' ? JSON.stringify(rawText) : String(rawText || '...');
 
   const progress = (currentQuestion / totalQuestions) * 100;
 
@@ -317,17 +325,18 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
                 let showCheck = isSelected;
 
                 if (reviewMode && currentQData) {
-                  const isCorrect = opt.id === currentQData.correct_option_id;
+                  const correctId = ((currentQData as any)?.correct_option_id || (currentQData as any)?.correctOptionId);
+                  const isCorrect = opt.id === correctId;
                   if (isCorrect) {
-                    optionClass = 'border-green-500 bg-green-50';
-                    iconClass = 'border-green-500 bg-green-500 text-white';
+                    optionClass = 'border-emerald-500 bg-emerald-50/50';
+                    iconClass = 'border-emerald-500 bg-emerald-500 text-white';
                     showCheck = true;
                   } else if (isSelected && !isCorrect) {
-                    optionClass = 'border-red-500 bg-red-50';
+                    optionClass = 'border-red-500 bg-red-50/50';
                     iconClass = 'border-red-500 bg-red-500 text-white';
-                    showCheck = false;
+                    showCheck = true;
                   } else {
-                    optionClass = 'border-slate-100 bg-white opacity-50';
+                    optionClass = 'border-slate-100 bg-white opacity-40';
                   }
                 } else if (isSelected) {
                   optionClass = 'border-brand-500 bg-brand-50';
@@ -344,9 +353,11 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-bold text-sm ${iconClass}`}>
                       {opt.id}
                     </div>
-                    <div className="flex grow font-black text-xs uppercase tracking-widest text-slate-800">{opt.label}</div>
-                    {showCheck && <span className={`material-symbols-outlined ${reviewMode && opt.id === currentQData?.correct_option_id ? 'text-green-500' : (reviewMode && isSelected ? 'text-red-500' : 'text-brand-500')}`}>
-                      {reviewMode && opt.id !== currentQData?.correct_option_id && isSelected ? 'cancel' : 'check_circle'}
+                    <div className="flex grow font-black text-xs uppercase tracking-widest text-slate-800">
+                      {typeof (opt.label || opt.text) === 'object' ? 'Invalid Option Content' : String(opt.label || opt.text || '')}
+                    </div>
+                    {showCheck && <span className={`material-symbols-outlined ${reviewMode && opt.id === ((currentQData as any)?.correct_option_id || (currentQData as any)?.correctOptionId) ? 'text-green-500' : (isSelected && !reviewMode ? 'text-brand-500' : (isSelected ? 'text-red-500' : 'text-green-500'))}`}>
+                      {reviewMode && isSelected && opt.id !== ((currentQData as any)?.correct_option_id || (currentQData as any)?.correctOptionId) ? 'cancel' : 'check_circle'}
                     </span>}
                   </button>
                 );
@@ -439,9 +450,9 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
             <div className="flex flex-col w-full gap-3">
               <button
                 onClick={reviewMode ? onExit : handleFinish}
-                className="w-full bg-brand-500 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all active:scale-95"
+                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all active:scale-95"
               >
-                {reviewMode ? 'Yes, Exit Now' : 'Yes, Finalize Submission'}
+                {reviewMode ? 'Exit Review' : 'Yes, Finalize Submission'}
               </button>
               <button
                 onClick={() => setIsModalOpen(false)}

@@ -172,6 +172,12 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
     }
   };
 
+  useEffect(() => {
+    if (!loading && !currentLesson && initialLessonId) {
+      onBack();
+    }
+  }, [loading, currentLesson, initialLessonId]);
+
   // Helper to calculate and update progress
   const updateProgress = async (type: 'read' | 'quiz', value: any) => {
     // CRITICAL: Only track progress for authenticated students
@@ -198,34 +204,29 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
         [currentLesson.id]: lessonProgress
       };
 
-      // 3. Calculate Global Progress (Course Level)
-      let totalPointsPossible = 0;
-      let totalPointsEarned = 0;
-
-      // Calculate score for THIS lesson first
       const isRead = lessonProgress.read || false;
-      const currentReadScore = isRead ? 50 : 0;
-      const currentExamScore = (lessonProgress.quiz_score || 0) >= 50 ? 50 : 0;
-      const currentLessonTotal = currentReadScore + currentExamScore;
+      const isExamPassed = (lessonProgress.quiz_score || 0) >= 50;
+      const isLessonCompleted = isRead; // We only require reading now for this part
 
-      const isLessonCompleted = currentLessonTotal >= 95;
+      // Recalculate Course Progress based on COMPLETED CHAPTERS
+      let totalChaptersCount = chapters.length || 1;
+      let completedChaptersCount = 0;
 
-      // Recalculate Course Progress
       chapters.forEach(ch => {
-        ch.lessons.forEach((l: any) => {
-          totalPointsPossible += 100;
+        const introDone = (newProgressMap[`intro-${ch.id}`]?.read);
+        const lessonsInChapter = ch.lessons || [];
+        const lessonsDone = lessonsInChapter.length === 0 || lessonsInChapter.every((l: any) => {
           const p = newProgressMap[l.id] || {};
-          // Score = (Read ? 50 : 0) + (ExamPass ? 50 : 0)
-          const rScore = p.read ? 50 : 0;
-          const qScore = (p.quiz_score || 0) >= 50 ? 50 : 0;
-
-          totalPointsEarned += (rScore + qScore);
+          return p.read;
         });
+        const examDone = (newProgressMap[ch.id]?.quiz_score || 0) >= 50;
+
+        if (introDone && lessonsDone && examDone) {
+          completedChaptersCount++;
+        }
       });
 
-      const newGlobalProgress = totalPointsPossible > 0
-        ? Math.round((totalPointsEarned / totalPointsPossible) * 100)
-        : 0;
+      const newGlobalProgress = Math.round((completedChaptersCount / totalChaptersCount) * 100);
 
       const { error } = await supabase
         .from('enrollments')
@@ -278,25 +279,7 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
   }
 
   if (!currentLesson) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-10 bg-slate-50 min-h-[400px] text-center space-y-6 animate-fade-in">
-        <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center shadow-inner">
-          <span className="material-symbols-outlined text-4xl text-slate-400">auto_stories</span>
-        </div>
-        <div className="max-w-md">
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Konu Bulunamadı</h2>
-          <p className="text-slate-500 font-medium leading-relaxed">
-            Seçtiğiniz derse ait konu anlatımı şu an mevcut değil veya henüz yayına alınmamış.
-          </p>
-        </div>
-        <button
-          onClick={onBack}
-          className="bg-brand-500 text-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-brand-500/20 active:scale-95 transition-all"
-        >
-          Konu Listesine Dön
-        </button>
-      </div>
-    );
+    return null; // Auto-redirecting via useEffect
   }
 
   const isCompleted = enrollment?.completed_lesson_ids?.includes(currentLesson.id);
@@ -319,11 +302,11 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
                 <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden p-[1px] border border-slate-200">
                   <div
                     className="h-full bg-brand-500 rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(72,80,229,0.3)]"
-                    style={{ width: `${Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.scroll_percent || 0) / 2) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%` }}
+                    style={{ width: `${Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.read ? 50 : 0)) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%` }}
                   ></div>
                 </div>
                 <span className="text-[10px] font-black text-brand-500">
-                  {Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.scroll_percent || 0) / 2) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%
+                  {Math.round(((enrollment?.lesson_progress?.[currentLesson?.id]?.read ? 50 : 0)) + ((enrollment?.lesson_progress?.[currentLesson?.id]?.quiz_score || 0) >= 50 ? 50 : 0))}%
                 </span>
               </div>
             </div>

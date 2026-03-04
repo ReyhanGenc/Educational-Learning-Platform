@@ -27,17 +27,24 @@ const ExamList: React.FC<ExamListProps> = ({ role, onTakeExam, onViewResults }) 
 
   const filteredExams = exams
     .filter(e => activeTab === 'completed' ? !!completedExams[e.id] : !completedExams[e.id])
-    .filter(e =>
-      (e.title?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
-      (e.subject?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
-      (e.status?.toLowerCase().includes(searchQuery.toLowerCase()) || false)
-    );
+    .filter(e => {
+      const query = searchQuery.toLowerCase();
+      return (
+        (e.title?.toLowerCase() || '').includes(query) ||
+        (e.subject?.toLowerCase() || '').includes(query) ||
+        (e.status?.toLowerCase() || '').includes(query)
+      );
+    });
 
   useEffect(() => {
     const fetchExams = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
+        const { data, error } = await supabase
+          .from('exams')
+          .select('*')
+          .is('chapter_id', null) // Only fetch standalone exams (not linked to a specific chapter/unit quiz)
+          .order('created_at', { ascending: false });
         if (error) throw error;
 
         if (user) {
@@ -56,19 +63,24 @@ const ExamList: React.FC<ExamListProps> = ({ role, onTakeExam, onViewResults }) 
           }
         }
 
-        // Map snake_case to camelCase
+        // Map snake_case to camelCase and ensure data types are UI-safe
         if (data && data.length > 0) {
-          const formatted = data.map(d => ({
-            id: d.id,
-            title: d.title,
-            subject: d.subject,
-            duration: d.duration,
-            questions: d.questions,
-            dateTime: d.date_time,
-            priority: d.status,
-            status: d.status,
-            color: d.color
-          }));
+          const formatted = data.map(d => {
+            // If d.questions is an array (JSON in DB), we want its count for the list view
+            const qCount = Array.isArray(d.questions) ? d.questions.length : (parseInt(d.questions) || 0);
+
+            return {
+              id: d.id,
+              title: typeof d.title === 'string' ? d.title : 'Untitled Assessment',
+              subject: typeof d.subject === 'string' ? d.subject : 'General',
+              duration: d.duration || (qCount * 2),
+              questions: qCount,
+              dateTime: d.date_time || d.created_at,
+              priority: d.status || 'Active',
+              status: d.status || 'Active',
+              color: d.color || 'brand'
+            };
+          });
           setExams(formatted as any);
         }
       } catch (err) {
@@ -149,13 +161,13 @@ const ExamList: React.FC<ExamListProps> = ({ role, onTakeExam, onViewResults }) 
                     <div className="space-y-4">
                       <div className="flex gap-2">
                         <span className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${completedExams[exam.id] ? 'bg-green-50 text-green-500 border-green-200' : c.light + ' ' + c.text + ' ' + c.border} border`}>
-                          {completedExams[exam.id] ? 'Completed' : exam.status}
+                          {completedExams[exam.id] ? 'Completed' : (exam.status || 'Active')}
                         </span>
                         <span className="px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 border border-slate-200">
-                          {exam.subject}
+                          {exam.subject || 'General'}
                         </span>
                       </div>
-                      <h3 className="text-xl font-black text-slate-900 leading-tight tracking-tight group-hover:text-brand-500 transition-colors uppercase">{exam.title}</h3>
+                      <h3 className="text-xl font-black text-slate-900 leading-tight tracking-tight group-hover:text-brand-500 transition-colors uppercase">{exam.title || 'Untitled Assessment'}</h3>
                     </div>
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${c.light} ${c.text} shadow-inner border ${c.border}`}>
                       <span className="material-symbols-outlined text-3xl font-bold">verified_user</span>
@@ -165,11 +177,11 @@ const ExamList: React.FC<ExamListProps> = ({ role, onTakeExam, onViewResults }) 
                   <div className="grid grid-cols-2 gap-4 mb-10">
                     <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col gap-1">
                       <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Duration</span>
-                      <span className="text-sm font-black text-slate-800">{exam.questions * 2} Min</span>
+                      <span className="text-sm font-black text-slate-800">{(exam.questions || 5) * 2} Min</span>
                     </div>
                     <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col gap-1">
                       <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Questions</span>
-                      <span className="text-sm font-black text-slate-800">{exam.questions} Qs</span>
+                      <span className="text-sm font-black text-slate-800">{exam.questions || 0} Qs</span>
                     </div>
                   </div>
 

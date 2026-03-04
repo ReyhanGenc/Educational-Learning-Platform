@@ -36,18 +36,30 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
           const enrollment = (enrollments || []).find(e => e.lesson_progress && e.lesson_progress[lessonId]);
           const progress = enrollment?.lesson_progress?.[lessonId];
 
-          const unitQuestions = UNIT_EXAMS[lessonId] || [];
-          setQuestions(unitQuestions.map((q, i) => ({ ...q, id: `u-${i}`, exam_id: examId, order_num: i + 1 } as any)));
+          // 2. Fetch Questons: Try UNIT_EXAMS first, then Supabase 'exams' table for that chapter
+          let unitQuestions = UNIT_EXAMS[lessonId] || [];
+          let dbExam: any = null;
+
+          if (unitQuestions.length === 0) {
+            const { data: exData } = await supabase.from('exams').select('*').eq('chapter_id', lessonId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+            if (exData && Array.isArray(exData.questions)) {
+              unitQuestions = exData.questions;
+              dbExam = exData;
+            }
+          }
+
+          setQuestions(unitQuestions.map((q: any, i) => ({ ...q, id: `u-${i}`, exam_id: examId, order_num: i + 1 } as any)));
 
           if (progress) {
             const studentAnswers = progress.quiz_answers || {};
             let correctCount = 0;
             let incorrectCount = 0;
 
-            unitQuestions.forEach((q, idx) => {
+            unitQuestions.forEach((q: any, idx) => {
               const ans = studentAnswers[idx + 1];
               if (ans) {
-                if (ans === q.correct_option_id) correctCount++;
+                const correctId = q.correct_option_id || q.correctOptionId;
+                if (ans === correctId) correctCount++;
                 else incorrectCount++;
               }
             });
@@ -67,7 +79,7 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
 
             setExam({
               id: examId,
-              title: 'Unit Assessment: ' + lessonId,
+              title: dbExam?.title || ('Unit Assessment: ' + lessonId),
               subject: 'Course Work',
               duration: 30,
               questions: unitQuestions.length,
@@ -95,10 +107,11 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
             if (resultId) {
               query = query.eq('id', resultId);
             } else {
-              query = query.order('created_at', { ascending: false }).limit(1);
+              query = query.limit(1);
             }
 
-            const { data: rData } = await query.maybeSingle();
+            const { data: rData, error: rError } = await query.maybeSingle();
+            if (rError) console.error('ResultView: Error fetching exam result:', rError);
             if (rData) {
               console.log('ResultView successfully fetched rData:', rData);
               setResult(rData as any);
@@ -118,14 +131,15 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
   }, [examId, resultId, user]);
   console.log('Final Result State in ResultView:', result);
   // Use DB data if available, fallback to mock/examData
-  const totalQuestions = result?.total_questions || exam?.questions || examData?.questions || 50;
+  const rawQ = exam?.questions || examData?.questions;
+  const totalQuestions = result?.total_questions || (Array.isArray(rawQ) ? rawQ.length : (parseInt(rawQ) || 50));
 
   // Use exact values from DB if available. Use ?? to allow 0.
   const correctAnswers = result?.correct_answers ?? 0;
   const incorrectAnswers = result?.incorrect_answers ?? 0;
   const skipped = totalQuestions - correctAnswers - incorrectAnswers;
 
-  const initialDuration = exam?.questions ? exam.questions * 2 : (examData?.questions || 30) * 2;
+  const initialDuration = totalQuestions * 2;
   // If result exists, rigorously use its time_spent. Otherwise mock something reasonable based on duration limit.
   const timeSpentSeconds = result?.time_spent_seconds != null
     ? result.time_spent_seconds
@@ -264,11 +278,12 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
                 </div>
 
                 <div className="space-y-8">
-                  {questions.map((q, idx) => {
+                  {questions.map((q: any, idx) => {
                     const studentAnsId = result.answers[idx + 1];
-                    const isCorrect = studentAnsId === q.correct_option_id;
-                    const studentAnsLabel = q.options.find(o => o.id === studentAnsId)?.label || 'Not Answered';
-                    const correctAnsLabel = q.options.find(o => o.id === q.correct_option_id)?.label;
+                    const correctId = q.correct_option_id || q.correctOptionId;
+                    const isCorrect = studentAnsId === correctId;
+                    const studentAnsLabel = q.options.find((o: any) => o.id === studentAnsId)?.label || q.options.find((o: any) => o.id === studentAnsId)?.text || 'Not Answered';
+                    const correctAnsLabel = q.options.find((o: any) => o.id === correctId)?.label || q.options.find((o: any) => o.id === correctId)?.text;
 
                     return (
                       <div key={idx} className={`p-8 rounded-3xl border-2 transition-all ${isCorrect ? 'border-emerald-50 bg-emerald-50/20' : 'border-red-50 bg-red-50/20'}`}>
@@ -277,20 +292,22 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
                             {idx + 1}
                           </div>
                           <div className="flex-1 space-y-4">
-                            <h4 className="text-lg font-bold text-slate-900 leading-snug">{q.question_text}</h4>
+                            <h4 className="text-lg font-bold text-slate-900 leading-snug">
+                              {typeof (q.question_text || q.text) === 'object' ? 'Question Data Error' : String(q.question_text || q.text || 'Untitled')}
+                            </h4>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                               <div className="space-y-1">
                                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Your Answer</p>
                                 <div className={`px-4 py-3 rounded-xl border font-bold text-sm ${isCorrect ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-red-200 text-red-700'}`}>
-                                  {studentAnsLabel}
+                                  {typeof studentAnsLabel === 'object' ? 'Option Error' : String(studentAnsLabel)}
                                 </div>
                               </div>
                               {!isCorrect && (
                                 <div className="space-y-1 animate-fade-in">
                                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Correct Answer</p>
                                   <div className="px-4 py-3 rounded-xl bg-white border border-emerald-200 text-emerald-700 font-bold text-sm">
-                                    {correctAnsLabel}
+                                    {typeof correctAnsLabel === 'object' ? 'Option Error' : String(correctAnsLabel)}
                                   </div>
                                 </div>
                               )}

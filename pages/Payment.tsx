@@ -36,7 +36,7 @@ const Payment: React.FC<PaymentProps> = ({ cart, onBack, onComplete }) => {
                                         <h3 className="font-bold text-slate-900 text-sm">{item.title}</h3>
                                         <p className="text-xs text-slate-500">{item.instructor}</p>
                                     </div>
-                                    <span className="font-black text-slate-900">${item.price}</span>
+                                    <span className="font-black text-slate-900">${Number(item.price).toFixed(2)}</span>
                                 </div>
                             ))}
                         </div>

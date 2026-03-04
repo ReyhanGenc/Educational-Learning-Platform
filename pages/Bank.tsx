@@ -8,6 +8,7 @@ const Bank: React.FC = () => {
   const { user } = useAuth();
   const [balance, setBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [earningsData, setEarningsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,20 +46,44 @@ const Bank: React.FC = () => {
       if (txError) throw txError;
       setTransactions(txData || []);
 
+      // 3. Process earnings data for chart
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthlyRevenue: Record<string, number> = {};
+
+      if (txData) {
+        txData.forEach(tx => {
+          const date = new Date(tx.created_at);
+          const mName = months[date.getMonth()];
+          monthlyRevenue[mName] = (monthlyRevenue[mName] || 0) + tx.amount;
+        });
+      }
+
+      const formattedEarnings = months.map((m, idx) => ({
+        month: m,
+        revenue: monthlyRevenue[m] || 0,
+        index: idx
+      })).filter(m => m.index <= new Date().getMonth()).slice(-6);
+
+      // Fallback if no history
+      if (formattedEarnings.length === 0 || formattedEarnings.every(e => e.revenue === 0)) {
+        setEarningsData([
+          { month: 'Jan', revenue: 0 },
+          { month: 'Feb', revenue: 0 },
+          { month: 'Mar', revenue: 0 },
+          { month: 'Apr', revenue: 0 },
+          { month: 'May', revenue: 0 },
+          { month: 'Jun', revenue: 0 },
+        ]);
+      } else {
+        setEarningsData(formattedEarnings);
+      }
+
     } catch (error) {
       console.error('Error fetching financial data:', error);
     } finally {
       setLoading(false);
     }
   };
-
-  const earningsData = [
-    { month: 'Jan', revenue: 4200 },
-    { month: 'Feb', revenue: 3800 },
-    { month: 'Mar', revenue: 4500 }, // Scaled down to match reality
-    { month: 'Apr', revenue: balance > 0 ? balance * 0.8 : 1200 },
-    { month: 'Jun', revenue: balance },
-  ];
 
   if (loading) {
     return (
@@ -93,9 +118,9 @@ const Bank: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         {[
-          { label: 'Total Revenue', value: `$${balance.toLocaleString()}`, icon: 'payments', color: 'brand' },
-          { label: 'Available Balance', value: `$${balance.toLocaleString()}`, icon: 'account_balance', color: 'emerald' },
-          { label: 'Pending Payouts', value: '$0', icon: 'hourglass_empty', color: 'amber' },
+          { label: 'Total Revenue', value: `$${Number(balance).toFixed(2)}`, icon: 'payments', color: 'brand' },
+          { label: 'Available Balance', value: `$${Number(balance).toFixed(2)}`, icon: 'account_balance', color: 'emerald' },
+          { label: 'Pending Payouts', value: '$0.00', icon: 'hourglass_empty', color: 'amber' },
           { label: 'YTD Growth', value: '+0%', icon: 'trending_up', color: 'indigo' }
         ].map((s, i) => (
           <div key={i} className="bg-white p-12 rounded-[32px] border border-slate-200 shadow-sm group">
@@ -134,7 +159,7 @@ const Bank: React.FC = () => {
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: '600', fill: '#475569' }} />
                 <Tooltip
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.08)', padding: '16px' }}
-                  formatter={(value: any) => [`$${value}`, 'Revenue']}
+                  formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Revenue']}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#4850e5" strokeWidth={4} fillOpacity={1} fill="url(#colorEarnings)" />
               </AreaChart>
@@ -155,7 +180,7 @@ const Bank: React.FC = () => {
                 <div key={i} className="flex flex-col gap-2 p-6 bg-white/5 rounded-2xl border border-white/5 group hover:bg-white/10 transition-all cursor-pointer">
                   <div className="flex justify-between items-start">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">SALE-{tx.id.slice(0, 4)}</span>
-                    <span className="text-xs font-black text-emerald-400">+${tx.amount.toLocaleString()}</span>
+                    <span className="text-xs font-black text-emerald-400">+$${Number(tx.amount).toFixed(2)}</span>
                   </div>
                   <h4 className="text-sm font-bold tracking-tight text-white">{tx.description}</h4>
                   <div className="flex justify-between items-center mt-2">

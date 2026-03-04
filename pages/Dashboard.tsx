@@ -29,28 +29,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
   const [radarData, setRadarData] = useState<any[]>([]);
   const [recentLessons, setRecentLessons] = useState<any[]>([]);
 
-  const classMetrics = [
-    { label: 'Total Students', value: '1,284', icon: 'groups', color: 'indigo' },
-    { label: 'Avg. Class Grade', value: '78%', icon: 'trending_up', color: 'emerald' },
-    { label: 'Active Courses', value: '12', icon: 'menu_book', color: 'brand' },
-    { label: 'Assessments Done', value: '450', icon: 'fact_check', color: 'amber' }
-  ];
-
-  const instructorPerformanceData = [
-    { month: 'Jan', performance: 65 },
-    { month: 'Feb', performance: 72 },
-    { month: 'Mar', performance: 68 },
-    { month: 'Apr', performance: 85 },
-    { month: 'May', performance: 82 },
-    { month: 'Jun', performance: 90 },
-  ];
 
   useEffect(() => {
     if (!isInstructor && user) {
       fetchStudentData();
       fetchRecentLessons();
-    } else if (isInstructor) {
-      setLoading(false); // Instructor view uses mock for now
+    } else if (isInstructor && user) {
+      fetchInstructorData();
     }
   }, [user, isInstructor, courses]);
 
@@ -78,6 +63,93 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
       }
     } catch (err) {
       console.error('Error fetching recent lessons:', err);
+    }
+  };
+
+  const fetchInstructorData = async () => {
+    try {
+      setLoading(true);
+      const userId = user?.id;
+      const instructorName = userMetadata?.full_name || 'Anonymous Instructor';
+
+      // 1. Fetch Instructor's Courses
+      const { data: instCourses, error: courseError } = await supabase
+        .from('courses')
+        .select('id')
+        .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`);
+
+      if (courseError) throw courseError;
+      const courseIds = instCourses?.map(c => c.id) || [];
+
+      // 2. Fetch Enrollments
+      let totalStudents = 0;
+      if (courseIds.length > 0) {
+        const { count, error: countError } = await supabase
+          .from('enrollments')
+          .select('*', { count: 'exact', head: true })
+          .in('course_id', courseIds);
+        if (!countError) totalStudents = count || 0;
+      }
+
+      // 3. Fetch Instructor's Exams
+      const { data: instExams } = await supabase
+        .from('exams')
+        .select('id')
+        .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`);
+      const examIds = instExams?.map(e => e.id) || [];
+
+      // 4. Calculate Monthly Courses Added
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthlyCourseCounts: Record<string, number> = {};
+
+      const { data: allInstCourses } = await supabase
+        .from('courses')
+        .select('created_at')
+        .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`);
+
+      if (allInstCourses) {
+        allInstCourses.forEach(c => {
+          const date = new Date(c.created_at);
+          const mName = months[date.getMonth()];
+          monthlyCourseCounts[mName] = (monthlyCourseCounts[mName] || 0) + 1;
+        });
+      }
+
+      const monthlyDeploymentData = months.map((m, idx) => ({
+        month: m,
+        courses: monthlyCourseCounts[m] || 0,
+        index: idx
+      })).filter(m => m.index <= new Date().getMonth()).slice(-6);
+
+      // 5. Fetch Results for metrics
+      let avgGrade = 0;
+      let assessmentsDone = 0;
+
+      if (examIds.length > 0) {
+        const { data: results, error: resultsError } = await supabase
+          .from('exam_results')
+          .select('score')
+          .in('exam_id', examIds);
+
+        if (results && !resultsError) {
+          assessmentsDone = results.length;
+          const totalScore = results.reduce((acc, r) => acc + r.score, 0);
+          avgGrade = assessmentsDone > 0 ? Math.round(totalScore / assessmentsDone) : 0;
+        }
+      }
+
+      setActivityData(monthlyDeploymentData);
+      setMetrics({
+        activeCourses: courseIds.length,
+        lessonsPassed: totalStudents,
+        avgGpa: avgGrade,
+        examsPassed: assessmentsDone
+      });
+
+    } catch (err) {
+      console.error('Error fetching instructor data:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -190,6 +262,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
   }
 
   if (isInstructor) {
+    const dynamicClassMetrics = [
+      { label: 'Total Students', value: metrics.lessonsPassed.toLocaleString(), icon: 'groups', color: 'indigo' },
+      { label: 'Avg. Class Grade', value: `${Number(metrics.avgGpa).toFixed(2)}%`, icon: 'trending_up', color: 'emerald' },
+      { label: 'Active Courses', value: metrics.activeCourses.toString(), icon: 'menu_book', color: 'brand' },
+      { label: 'Assessments Done', value: metrics.examsPassed.toLocaleString(), icon: 'fact_check', color: 'amber' }
+    ];
+
     return (
       <div className="min-h-full p-6 lg:p-10 space-y-12 animate-fade-in max-w-[1600px] mx-auto pb-24">
         <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
@@ -202,7 +281,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
               Welcome back, {userMetadata?.full_name || 'Instructor'}!
             </h1>
             <p className="text-slate-700 font-medium text-base">
-              Overall institutional engagement is up <span className="text-emerald-700 font-bold">+8.2% this term</span>
+              Overall institutional engagement is up <span className="text-emerald-700 font-bold">tracking real data</span>
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -210,13 +289,13 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
               <span className="material-symbols-outlined text-slate-700 text-xl">notifications</span>
             </button>
             <div className="w-12 h-12 rounded-xl bg-slate-900 p-0.5 shadow-lg cursor-pointer hover:scale-105 transition-transform overflow-hidden ring-2 ring-white">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Instructor" alt="Profile" className="w-full h-full object-cover rounded-lg" />
+              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userMetadata?.full_name || 'Instructor'}`} alt="Profile" className="w-full h-full object-cover rounded-lg" />
             </div>
           </div>
         </header>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {classMetrics.map((stat, i) => (
+          {dynamicClassMetrics.map((stat, i) => (
             <div key={i} className="bg-white p-14 rounded-[32px] border border-slate-200 shadow-sm transition-all group relative mt-4 min-h-[250px]">
               <div className={`absolute -top-6 left-10 w-12 h-12 rounded-xl shadow-lg transition-all group-hover:-translate-y-1 duration-300 flex items-center justify-center 
                 ${stat.color === 'brand' ? 'bg-brand-500 text-white shadow-brand-500/20' :
@@ -238,15 +317,15 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
           <div className="xl:col-span-2 bg-white p-14 rounded-[32px] border border-slate-200 shadow-sm space-y-12 min-h-[550px]">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">Cohort Grade Performance</h3>
-                <p className="text-slate-700 text-xs font-medium">Institutional Average Metrics</p>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">Institutional Growth</h3>
+                <p className="text-slate-700 text-xs font-medium">Monthly Course Architect Deployments</p>
               </div>
             </div>
             <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={instructorPerformanceData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorPerf" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="colorCourses" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#4850e5" stopOpacity={0.1} />
                       <stop offset="95%" stopColor="#4850e5" stopOpacity={0} />
                     </linearGradient>
@@ -257,7 +336,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
                   <Tooltip
                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.08)', padding: '16px' }}
                   />
-                  <Area type="monotone" dataKey="performance" stroke="#4850e5" strokeWidth={4} fillOpacity={1} fill="url(#colorPerf)" />
+                  <Area type="monotone" dataKey="courses" stroke="#4850e5" strokeWidth={4} fillOpacity={1} fill="url(#colorCourses)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -270,9 +349,14 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
               {courses.filter(c => c.isPurchased).length > 0 ? (
                 courses.filter(c => c.isPurchased).map((course, i) => (
                   <div key={i} className="space-y-3 cursor-pointer" onClick={() => onNavigate('course-details', course.id)}>
-                    <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em]">
-                      <span className="text-slate-400">{course.title}</span>
-                      <span className="text-white">{course.progress}%</span>
+                    <div className="flex justify-between items-end mb-2">
+                      <div className="flex flex-col">
+                        <span className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{course.title}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[8px] font-black text-brand-400 uppercase tracking-widest">{course.completed || 0} / {course.total || 0} UNITS COMPLETED</span>
+                        </div>
+                      </div>
+                      <span className="text-white text-xs font-black">{course.progress}%</span>
                     </div>
                     <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
                       <div className="h-full bg-brand-500 rounded-full transition-all duration-1000" style={{ width: `${course.progress}%` }}></div>
@@ -291,7 +375,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
             </button>
           </div>
         </div>
-      </div>
+      </div >
     );
   }
 

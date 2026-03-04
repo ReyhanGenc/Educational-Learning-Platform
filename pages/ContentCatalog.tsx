@@ -51,22 +51,36 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: 
 
       <div className="space-y-8 mt-auto">
         {course.isPurchased ? (
-          <>
-            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest">
-              <span className="text-slate-500">Progression</span>
-              <span className="text-slate-900">{course.completed} / {course.total} Units</span>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mastery Status</span>
+                <span className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                  {course.completed} / {course.total} Units Completed
+                </span>
+              </div>
+              <div className="bg-brand-50 text-brand-600 px-4 py-2 rounded-xl text-[10px] font-black border border-brand-100 shadow-sm">
+                {course.progress}%
+              </div>
             </div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-[1px]">
-              <div className="h-full bg-brand-500 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(72,80,229,0.3)]" style={{ width: `${course.progress}%` }}></div>
+            <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+              <div
+                className={`h-full rounded-full transition-all duration-1000 ${course.progress === 100 ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]' : 'bg-brand-500 shadow-[0_0_12px_rgba(72,80,229,0.4)]'}`}
+                style={{ width: `${course.progress}%` }}
+              ></div>
             </div>
             <button
               onClick={() => onSelectCourse(course.id)}
-              className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-500 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"
+              className={`w-full py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95
+                ${course.progress >= 100 ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' : 'bg-slate-900 hover:bg-brand-600 text-white shadow-slate-900/20'}
+              `}
             >
-              {course.progress >= 100 ? 'Review Course' : 'Continue'}
-              <span className="material-symbols-outlined text-lg font-bold">play_arrow</span>
+              {course.progress >= 100 ? 'Review Mastered Content' : 'Continue Curriculum'}
+              <span className="material-symbols-outlined text-lg font-bold">
+                {course.progress >= 100 ? 'workspace_premium' : 'play_arrow'}
+              </span>
             </button>
-          </>
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
@@ -98,7 +112,7 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: 
             <p className="text-[8px] text-center font-bold text-slate-400 uppercase tracking-widest flex items-center justify-center gap-2">
               <span>Preview available for Chapter 1</span>
               <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-              <span className="text-slate-900">${course.price}</span>
+              <span className="text-slate-900">${Number(course.price).toFixed(2)}</span>
             </p>
           </div>
         )}
