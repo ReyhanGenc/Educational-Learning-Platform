@@ -37,7 +37,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
     } else if (isInstructor && user) {
       fetchInstructorData();
     }
-  }, [user, isInstructor, courses]);
+  }, [user?.id, isInstructor]);
 
   const fetchRecentLessons = async () => {
     try {
@@ -162,7 +162,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
 
       const { data: results } = await supabase
         .from('exam_results')
-        .select('*, exams(subject)')
+        .select('id, score, exam_id, total_questions, correct_answers, time_spent_seconds, created_at, exams(subject)')
         .eq('user_id', user!.id);
 
       let examsPassed = 0;
@@ -187,13 +187,16 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
           totalScore += res.score;
           completedExamsCount++;
 
-          const resDate = new Date(res.created_at);
-          const dayName = days[resDate.getDay()];
-          if (activityMap[dayName] !== undefined) {
-            activityMap[dayName]++;
+          if ((res as any).created_at) {
+            const resDate = new Date((res as any).created_at);
+            const dayName = days[resDate.getDay()];
+            if (activityMap[dayName] !== undefined) {
+              activityMap[dayName]++;
+            }
           }
 
-          const subject = res.exams?.subject || 'General';
+          const examObj = Array.isArray(res.exams) ? res.exams[0] : res.exams;
+          const subject = examObj?.subject || 'General';
           if (!subjectScores[subject]) subjectScores[subject] = { total: 0, count: 0 };
           subjectScores[subject].total += res.score;
           subjectScores[subject].count++;

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../src/lib/supabase';
-import { UserRole } from '../types';
+import { UserRole, ACADEMIC_LEVELS } from '../types';
 import { useAuth } from '../src/contexts/AuthContext';
 
 type ManagementView = 'list' | 'create-course' | 'create-exam' | 'create-lesson' | 'view-course' | 'view-lesson' | 'view-exam';
@@ -60,6 +60,8 @@ const Management: React.FC = () => {
   const [courseTitle, setCourseTitle] = useState('');
   const [courseDescription, setCourseDescription] = useState('');
   const [courseCategory, setCourseCategory] = useState('Math');
+  const [courseEducationLevel, setCourseEducationLevel] = useState('High School');
+  const [courseLevelSelection, setCourseLevelSelection] = useState('Grade 10');
   const [lessonCategory, setLessonCategory] = useState('Math');
 
   const categories = ['History', 'Chemistry', 'Biology', 'Math', 'Physics', 'Art', 'Geography', 'Music'];
@@ -219,6 +221,8 @@ const Management: React.FC = () => {
       setCourseTitle('');
       setCourseDescription('');
       setCourseCategory('Math');
+      setCourseEducationLevel('High School');
+      setCourseLevelSelection('Grade 10');
       setExamCreatedStatus(null);
       setView('create-course');
     } else if (type === 'exam') {
@@ -281,6 +285,8 @@ const Management: React.FC = () => {
       setCourseTitle(item.title || '');
       setCourseDescription(item.description || '');
       setCourseCategory(item.category || 'Math');
+      setCourseEducationLevel(item.education_level || 'High School');
+      setCourseLevelSelection(item.level || 'Grade 10');
       setLoading(false);
       setView('create-course');
     } else if (type === 'exam') {
@@ -400,7 +406,8 @@ const Management: React.FC = () => {
         instructor: instructorName,
         price: Math.round(parseFloat(coursePrice) * 100) / 100 || 0,
         category: courseCategory,
-        level: selectedItem?.level || 'Beginner',
+        education_level: courseEducationLevel,
+        level: courseLevelSelection,
         rating: selectedItem?.rating || 5,
         total_duration: selectedItem?.total_duration || '2h',
         user_id: user?.id
@@ -798,8 +805,49 @@ const Management: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Education Level</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">school</span>
+                    <select
+                      value={courseEducationLevel}
+                      onChange={(e) => {
+                        const newEduLevel = e.target.value;
+                        setCourseEducationLevel(newEduLevel);
+                        // Reset specific level when education level changes
+                        if (ACADEMIC_LEVELS[newEduLevel]) {
+                          setCourseLevelSelection(ACADEMIC_LEVELS[newEduLevel][0]);
+                        }
+                      }}
+                      className="w-full bg-slate-100 border-2 border-slate-200 pl-16 pr-6 py-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500 appearance-none transition-all cursor-pointer"
+                    >
+                      {Object.keys(ACADEMIC_LEVELS).map(level => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Course Level / Grade</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">grade</span>
+                    <select
+                      value={courseLevelSelection}
+                      onChange={(e) => setCourseLevelSelection(e.target.value)}
+                      className="w-full bg-slate-100 border-2 border-slate-200 pl-16 pr-6 py-6 rounded-[24px] outline-none font-bold text-lg text-slate-900 focus:border-brand-500 appearance-none transition-all cursor-pointer"
+                    >
+                      {(ACADEMIC_LEVELS[courseEducationLevel] || []).map(lvl => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-4">
-                <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Master Category (Branch)</label>
+                <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Master Category (Subject)</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">category</span>
                   <select

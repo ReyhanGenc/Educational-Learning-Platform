@@ -72,7 +72,7 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
               total_questions: unitQuestions.length,
               correct_answers: correctCount,
               incorrect_answers: incorrectCount,
-              time_spent_seconds: 0,
+              time_spent_seconds: progress.time_spent_seconds || 0,
               answers: studentAnswers,
               created_at: new Date().toISOString()
             } as any);
@@ -100,7 +100,7 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
           if (user) {
             let query = supabase
               .from('exam_results')
-              .select('*')
+              .select('id, user_id, exam_id, score, answers, total_questions, correct_answers, incorrect_answers, time_spent_seconds, created_at')
               .eq('exam_id', examId)
               .eq('user_id', user.id);
 

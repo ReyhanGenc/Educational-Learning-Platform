@@ -26,26 +26,20 @@ const Analysis: React.FC<AnalysisProps> = ({ onBack, standalone = true }) => {
       try {
         const { data, error } = await supabase
           .from('exam_results')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('completed_at', { ascending: false });
+          .select('id, score')
+          .eq('user_id', user.id);
 
         if (error) throw error;
         setResults(data || []);
 
         if (data && data.length > 0) {
           const avg = Math.round(data.reduce((acc, curr) => acc + (curr.score || 0), 0) / data.length);
-          const totalCorrect = data.reduce((acc, curr) => acc + (curr.correct_answers || 0), 0);
-          const totalQuest = data.reduce((acc, curr) => acc + (curr.total_questions || 0), 0);
-
-          const totalSecs = data.reduce((acc, curr) => acc + (curr.time_spent_seconds || 0), 0);
-          const mins = Math.floor(totalSecs / 60);
 
           setStats({
             avgScore: avg,
             totalExams: data.length,
-            efficiency: mins > 0 ? `${mins}m ${totalSecs % 60}s` : `${totalSecs}s`,
-            accuracy: totalQuest > 0 ? `${totalCorrect}/${totalQuest}` : 'N/A',
+            efficiency: 'Recorded',
+            accuracy: 'Recorded',
             progression: `+${data.length * 2}%`,
           });
         }
@@ -173,7 +167,7 @@ const Analysis: React.FC<AnalysisProps> = ({ onBack, standalone = true }) => {
                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Assessment Record #{res.id.slice(-4)}</h4>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1.5 flex items-center gap-2">
                       <span className="material-symbols-outlined text-[14px]">calendar_today</span>
-                      {new Date(res.completed_at || res.created_at).toLocaleDateString()}
+                      {new Date(res.created_at).toLocaleDateString()}
                     </p>
                   </div>
                 </div>

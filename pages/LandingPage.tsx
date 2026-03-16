@@ -7,7 +7,10 @@ interface LandingPageProps {
   onPricing: () => void;
   onViewLessons?: () => void;
   onSelectLesson?: (courseId: string, lessonId: string) => void;
+  onExploreCourses?: () => void;
+  onPreviewCourse?: (course: any) => void;
   featuredLessons?: any[];
+  featuredCourses?: any[];
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({
@@ -16,7 +19,10 @@ const LandingPage: React.FC<LandingPageProps> = ({
   onPricing,
   onViewLessons,
   onSelectLesson,
-  featuredLessons = []
+  onExploreCourses,
+  onPreviewCourse,
+  featuredLessons = [],
+  featuredCourses = []
 }) => {
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -244,6 +250,95 @@ const LandingPage: React.FC<LandingPageProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Course Catalog Preview - Call to Action */}
+      <section className="py-24 px-4 bg-slate-900 overflow-hidden relative">
+        <div className="absolute top-0 right-0 w-1/2 h-full bg-brand-500/10 blur-[120px] rounded-full pointer-events-none -translate-y-1/2"></div>
+        <div className="absolute bottom-0 left-0 w-1/4 h-full bg-indigo-500/10 blur-[100px] rounded-full pointer-events-none translate-y-1/2"></div>
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center mb-16 space-y-4">
+            <div className="inline-flex px-4 py-2 rounded-full bg-white/5 border border-white/10 text-brand-400 text-[10px] font-black uppercase tracking-[0.2em] mb-4">
+              Premium Learning Paths
+            </div>
+            <h2 className="text-4xl md:text-6xl font-black text-white tracking-tight uppercase">
+              Expansive <span className="text-brand-400">Course Ecosystem</span>
+            </h2>
+            <p className="text-slate-400 text-lg font-medium max-w-2xl mx-auto">
+              Unlock professional-grade curricula across engineering, health, and social sciences.
+              Join thousands of students on their journey to mastery.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
+            {featuredCourses.slice(0, 3).map((course, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-[24px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col group hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all duration-700 h-[520px]"
+              >
+                <div className="relative aspect-video overflow-hidden">
+                  <img src={course.image || `https://picsum.photos/seed/${course.id}/800/1000`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={course.title} />
+                  <div className="absolute top-6 left-6 flex flex-col gap-2">
+                    <span className="bg-white/95 backdrop-blur-md py-1.5 px-3 rounded-lg text-[8px] font-black text-slate-900 uppercase tracking-widest shadow-lg border border-slate-200">
+                      {course.category}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-8">
+                  <div>
+                    <h3 className="font-black text-slate-900 text-base mb-3 leading-tight tracking-tight group-hover:text-brand-500 transition-colors uppercase line-clamp-2">
+                      {course.title}
+                    </h3>
+                    <div className="flex items-center gap-2 text-slate-600 mb-4 font-bold">
+                      <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${course.instructor || 'Instructor'}`} className="w-5 h-5 rounded-full ring-2 ring-slate-200" />
+                      <p className="text-[9px] font-black uppercase tracking-widest">{course.instructor || 'Lead Instructor'}</p>
+                    </div>
+                    <p className="text-[9px] text-slate-600 font-bold leading-relaxed">
+                      Integrated curriculum covering advanced methodologies within the {course.category} institutional framework.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 mt-6">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={onRegister}
+                          className="flex-1 bg-brand-500 text-white py-4 rounded-xl font-black text-[9px] uppercase tracking-[0.3em] hover:bg-brand-600 transition-all flex items-center justify-center gap-2 shadow-xl active:scale-95"
+                        >
+                          Join Us
+                          <span className="material-symbols-outlined text-base font-bold">bolt</span>
+                        </button>
+                        <button
+                          onClick={() => onPreviewCourse?.(course)}
+                          className="w-14 h-14 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-all active:scale-95 shadow-md group/preview"
+                        >
+                          <span className="material-symbols-outlined text-xl group-hover/preview:scale-110 transition-transform">visibility</span>
+                        </button>
+                      </div>
+                      <p className="text-[7px] text-center font-bold text-slate-400 uppercase tracking-widest flex items-center justify-center gap-2">
+                        <span>Preview available</span>
+                        <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                        <span className="text-slate-900 font-black">${course.price ? Number(course.price).toFixed(2) : '0.00'}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center">
+            <button
+              onClick={onExploreCourses}
+              className="inline-flex items-center gap-3 px-12 py-5 bg-white text-slate-900 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-50 transition-all active:scale-95 shadow-2xl"
+            >
+              Explore Full Catalog
+              <span className="material-symbols-outlined">rocket_launch</span>
+            </button>
           </div>
         </div>
       </section>

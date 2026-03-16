@@ -7,7 +7,7 @@ import { ExamQuestion, Exam } from '../types';
 interface ExamTakerProps {
   onExit: () => void;
   onSubmit?: (resultId?: string) => void;
-  onComplete?: (score: number, answers?: Record<number, string>) => void;
+  onComplete?: (score: number, answers?: Record<number, string>, timeSpentSeconds?: number) => void;
   examId?: string | null;
   resultId?: string | null;
   examData?: any;
@@ -161,12 +161,8 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
           user_id: user.id,
           exam_id: examId,
           score: score || 0,
-          total_questions: questions.length,
-          correct_answers: correctCount,
-          incorrect_answers: incorrectCount,
-          time_spent_seconds: Math.floor(timeSpent || 0),
           answers: answers
-        }).select().maybeSingle();
+        }).select('id').maybeSingle();
 
         if (error) {
           console.error('Error saving exam result:', error);
@@ -181,7 +177,7 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
 
     // 3. Callback for local handling (Unit Exams)
     if (onComplete) {
-      onComplete(score, answers);
+      onComplete(score, answers, Math.floor(timeSpent || 0));
     } else if (onSubmit) {
       onSubmit();
     }

@@ -92,7 +92,7 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
 
     const ch = chapters[chIndex];
     const introDone = getIntroStatus(ch.id) === 'Completed';
-    const examDone = (course?.lesson_progress?.[ch.id]?.quiz_score || 0) >= 50;
+    const examDone = course?.lesson_progress?.[ch.id]?.quiz_score !== undefined;
 
     if (introDone && examDone) return 'Completed';
     if (chIndex === 0) return 'Open';
@@ -100,7 +100,7 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
     // A chapter is OPEN if the PREVIOUS chapter is COMPLETED
     const prevCh = chapters[chIndex - 1];
     const prevIntroDone = getIntroStatus(prevCh.id) === 'Completed';
-    const prevExamDone = (course?.lesson_progress?.[prevCh.id]?.quiz_score || 0) >= 50;
+    const prevExamDone = course?.lesson_progress?.[prevCh.id]?.quiz_score !== undefined;
 
     if (prevIntroDone && prevExamDone) return 'Open';
     return 'Locked';
@@ -130,7 +130,7 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
 
       chapters.forEach((ch: any) => {
         const introDone = newProgressMap[`intro-${ch.id}`]?.read;
-        const examDone = (newProgressMap[ch.id]?.quiz_score || 0) >= 50;
+        const examDone = newProgressMap[ch.id]?.quiz_score !== undefined;
 
         // Konu/Explanation = 50 pts
         if (introDone) totalPointsEarned += 50;
@@ -263,7 +263,7 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
                   const isChLocked = chStatus === 'Locked';
                   const isChCompleted = chStatus === 'Completed';
                   const introStatus = getIntroStatus(chapter.id);
-                  const isExamSolved = (course?.lesson_progress?.[chapter.id]?.quiz_score || 0) >= 50;
+                  const isExamSolved = course?.lesson_progress?.[chapter.id]?.quiz_score !== undefined;
 
                   // 50/50 Split Progress for the Unit
                   const subjectProgress = introStatus === 'Completed' ? 50 : 0;

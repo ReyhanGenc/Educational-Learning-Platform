@@ -62,7 +62,6 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
       setCourse(courseRes.data);
 
       const chaptersData = chaptersRes.data;
-      console.log('Fetched chapters for course:', courseId, chaptersData?.length);
 
       if (chaptersData) {
         chaptersData.forEach(chapter => {
@@ -72,7 +71,6 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
           }
-          console.log(`Chapter "${chapter.title}" has ${chapter.lessons?.length} lessons`);
         });
         setChapters(chaptersData);
       }
@@ -88,7 +86,6 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
 
         // Use the first enrollment if multiple exist (shouldn't happen but for safety)
         enrollmentData = (data && data.length > 0) ? data[0] : null;
-        console.log('Enrollment found:', !!enrollmentData);
         setEnrollment(enrollmentData);
       }
 

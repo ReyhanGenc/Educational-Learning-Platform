@@ -26,10 +26,11 @@ import TopicExplanationView from './pages/TopicExplanationView';
 import { UNIT_EXAMS } from './src/data/unit_exams';
 import { mockExams } from './pages/ExamList';
 import { supabase } from './src/lib/supabase';
+import AIChatPopup from './src/components/AIChatPopup';
 
 const AppContent: React.FC = () => {
   const { user, role, loading: authLoading, signOut, signIn, signUp } = useAuth();
-  const [view, setView] = useState<'landing' | 'login' | 'register' | 'pricing' | 'app' | 'public-lessons'>('landing');
+  const [view, setView] = useState<'landing' | 'login' | 'register' | 'pricing' | 'app' | 'public-lessons' | 'public-catalog' | 'public-course-preview'>('landing');
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
@@ -60,12 +61,18 @@ const AppContent: React.FC = () => {
 
       if (coursesError) throw coursesError;
 
-      // 2. Robust Chapter Fetch: Get ALL chapters for these courses to avoid join/RLS issues
-      const { data: allChapters, error: chaptersError } = await supabase
-        .from('chapters')
-        .select('id, course_id');
-
-      if (chaptersError) console.error('Error fetching chapters:', chaptersError);
+      // 2. Fetch Chapters ONLY for these courses to be efficient and avoid limits
+      let allChapters: any[] = [];
+      if (coursesData && coursesData.length > 0) {
+        const courseIds = coursesData.map(c => c.id);
+        const { data: chaptersRes, error: chaptersError } = await supabase
+          .from('chapters')
+          .select('id, course_id')
+          .in('course_id', courseIds);
+        
+        if (chaptersError) console.error('Error fetching chapters:', chaptersError);
+        allChapters = chaptersRes || [];
+      }
 
       // 3. Fetch user enrollments if logged in
       let userEnrollments: any[] = [];
@@ -77,39 +84,33 @@ const AppContent: React.FC = () => {
 
         if (enrollmentsError) console.error('Error fetching enrollments:', enrollmentsError);
         userEnrollments = enrollmentsData || [];
-        console.log('User Enrollments fetched:', userEnrollments.length);
       }
 
-      // 3. Merge data
-      console.log('Courses before merge:', coursesData?.length);
+      // 4. Merge data and calculate progress
       const mergedCourses: Course[] = (coursesData || []).map((course: any) => {
         const enrollment = userEnrollments.find(e => e.course_id === course.id);
         const progressMap = enrollment?.lesson_progress || {};
         const completedIds = enrollment?.completed_lesson_ids || [];
 
-        let completedChaptersCount = 0;
-        let totalPointsEarned = 0;
-
-        // Match chapters from our robust fetch
-        const chapters = (allChapters || []).filter(ch => ch.course_id === course.id);
+        const chapters = allChapters.filter(ch => ch.course_id === course.id);
         const totalChaptersCount = chapters.length || 1;
-        let totalPointsPossible = totalChaptersCount * 100;
+        let totalPointsEarned = 0;
+        let completedChaptersCount = 0;
 
         chapters.forEach((ch: any) => {
           const introDone = progressMap[`intro-${ch.id}`]?.read;
-          const examDone = (progressMap[ch.id]?.quiz_score || 0) >= 50;
+          const examDone = progressMap[ch.id]?.quiz_score !== undefined;
 
-          // Simplified: 50% for Subject (Intro), 50% for Exam
           if (introDone) totalPointsEarned += 50;
           if (examDone) totalPointsEarned += 50;
-
-          if (introDone && examDone) {
-            completedChaptersCount++;
-          }
+          if (introDone && examDone) completedChaptersCount++;
         });
 
-        const dynamicProgress = totalPointsPossible > 0 ? Math.round((totalPointsEarned / totalPointsPossible) * 100) : 0;
-        console.log(`Course ${course.title} Progress: ${dynamicProgress}% (Earned: ${totalPointsEarned}, Possible: ${totalPointsPossible})`);
+        const totalPointsPossible = chapters.length * 100 || 100;
+        const dynamicProgress = Math.round((totalPointsEarned / totalPointsPossible) * 100);
+
+        // Debug log to trace matching issues (removed in next step if confirmed)
+        // console.log(`Course ${course.title}: ChID example: ${chapters[0]?.id}, Progress: ${dynamicProgress}%`);
 
         return {
           id: course.id,
@@ -119,16 +120,15 @@ const AppContent: React.FC = () => {
           image: course.image,
           price: parseFloat(course.price),
           description: course.description,
+          education_level: course.education_level,
           level: course.level,
           total_duration: course.total_duration,
           rating: parseFloat(course.rating),
-
-          // Enrollment data
           isPurchased: !!enrollment,
           progress: enrollment ? dynamicProgress : 0,
           completed: enrollment ? completedChaptersCount : 0,
           total: totalChaptersCount,
-          lesson_progress: enrollment ? enrollment.lesson_progress : {},
+          lesson_progress: progressMap,
           completed_lesson_ids: completedIds
         };
       });
@@ -176,7 +176,6 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const handleRefresh = () => {
-      console.log('Refreshing progress event received');
       fetchData();
     };
     window.addEventListener('refresh-progress', handleRefresh);
@@ -196,7 +195,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const fetchUnitExam = async () => {
       if (currentPage === 'unit-exam' && activeExamLessonId && dynamicExamQuestions.length === 0 && !isExamLoading) {
-        console.log('Fetching unit exam for:', activeExamLessonId);
         setIsExamLoading(true);
 
         const timeout = setTimeout(() => {
@@ -226,7 +224,6 @@ const AppContent: React.FC = () => {
           } else if (data) {
             setDynamicExamQuestions(data.questions || []);
           } else {
-            console.log('No DB exam found, using local fallback');
             setDynamicExamQuestions(UNIT_EXAMS[activeExamLessonId!] || []);
           }
         } catch (err) {
@@ -339,8 +336,6 @@ const AppContent: React.FC = () => {
       }
 
       // 4. Create Enrollments (with check)
-      console.log('Creating enrollments for:', cart.map(c => c.id));
-
       const newEnrollments = cart.map(course => ({
         user_id: user.id,
         course_id: course.id,
@@ -359,8 +354,6 @@ const AppContent: React.FC = () => {
         console.error('Enrollment Insert Error:', enrollmentError);
         throw enrollmentError;
       }
-
-      console.log('Enrollments inserted successfully:', insertedEnrollments);
 
       // 5. Update Local State & Force Re-fetch
       // Optimistic update
@@ -440,7 +433,7 @@ const AppContent: React.FC = () => {
     setCurrentPage('topic-view');
   };
 
-  const handleUnitExamComplete = async (score: number, answers?: Record<number, string>) => {
+  const handleUnitExamComplete = async (score: number, answers?: Record<number, string>, timeSpentSeconds?: number) => {
     if (!user || !activeExamLessonId || !activeCourseId) return;
 
     try {
@@ -459,7 +452,8 @@ const AppContent: React.FC = () => {
       const lessonProgress = currentProgressMap[activeExamLessonId] || {};
 
       lessonProgress.quiz_score = score;
-      lessonProgress.quiz_answers = answers; // Save answers for persistence
+      lessonProgress.quiz_answers = answers;
+      lessonProgress.time_spent_seconds = timeSpentSeconds || 0; // Ensure time is saved here too
 
       const newProgressMap = {
         ...currentProgressMap,
@@ -480,7 +474,7 @@ const AppContent: React.FC = () => {
       let isCurrentLessonCompleted = false;
 
       (chaptersData || []).forEach((ch: any) => {
-        const examDone = (newProgressMap[ch.id]?.quiz_score || 0) >= 50;
+        const examDone = newProgressMap[ch.id]?.quiz_score !== undefined;
 
         if (ch.id === activeExamLessonId && examDone) {
           isCurrentLessonCompleted = true;
@@ -519,23 +513,38 @@ const AppContent: React.FC = () => {
       if (updateError) throw updateError;
 
       // 4. Save to exam_results for historical tracking and analysis
-      const { data: recordData, error: recordError } = await supabase.from('exam_results').insert({
-        user_id: user.id,
-        exam_id: activeExamLessonId, // Linking to chapter_id
-        score: score,
-        answers: answers,
-        completed_at: new Date().toISOString()
-      }).select().maybeSingle();
+      // IMPORTANT: activeExamLessonId is a chapter_id. We need to find the actual exam record ID if it exists.
+      const { data: realExam } = await supabase
+        .from('exams')
+        .select('id')
+        .eq('chapter_id', activeExamLessonId)
+        .limit(1)
+        .maybeSingle();
 
-      if (recordError) console.error('Error saving historical record:', recordError);
+      let recordId = null;
+      if (realExam) {
+        const { data: recordData, error: recordError } = await supabase.from('exam_results').insert({
+          user_id: user.id,
+          exam_id: realExam.id,
+          score: score,
+          answers: answers,
+          total_questions: dynamicExamQuestions.length,
+          correct_answers: Math.round((score / 100) * dynamicExamQuestions.length),
+          incorrect_answers: dynamicExamQuestions.length - Math.round((score / 100) * dynamicExamQuestions.length),
+          time_spent_seconds: timeSpentSeconds || 0
+        }).select("id").maybeSingle();
+
+        if (recordError) console.error('Error saving historical record:', recordError);
+        recordId = recordData?.id;
+      }
 
       // 5. Navigate to Results View
-      setActiveExamId(activeExamLessonId); // Keep ID for ResultView's unit prefix logic
-      setActiveResultId(recordData?.id || null);
+      setActiveExamId('unit-' + activeExamLessonId); 
+      setActiveResultId(recordId);
       setCurrentPage('exam-result');
 
       setDynamicExamQuestions([]);
-      window.dispatchEvent(new Event('refresh-progress'));
+      await fetchData(); // Force local state sync and refresh view
 
       // Force refresh of courses/enrollment data via useEffect dependency or implicit reload
     } catch (error) {
@@ -573,8 +582,79 @@ const AppContent: React.FC = () => {
         onPricing={() => setView('pricing')}
         onViewLessons={handleViewPublicLessons}
         onSelectLesson={handleSelectPublicLesson}
+        onExploreCourses={() => setView('public-catalog')}
+        onPreviewCourse={(course) => {
+          setActiveCourseId(course.id);
+          setIsPreviewMode(true);
+          setView('public-course-preview');
+        }}
         featuredLessons={featuredLessons}
+        featuredCourses={courses.slice(0, 3)}
       />
+    );
+  }
+
+  // Guest/Visitor Views
+  if (view === 'public-catalog') {
+    return (
+      <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
+        <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+          <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between z-50">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('landing')}>
+              <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white">
+                <span className="material-symbols-outlined text-[20px]">school</span>
+              </div>
+              <span className="font-bold text-xl tracking-tight text-slate-900 uppercase">EduExam</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <button onClick={() => setView('login')} className="text-sm font-bold text-slate-600 hover:text-brand-500 transition-colors">Sign In</button>
+              <button onClick={() => setView('register')} className="bg-brand-500 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-brand-500/20 active:scale-95 transition-all">Join for Free</button>
+            </div>
+          </header>
+          <div className="flex-1 overflow-y-auto">
+            <ContentCatalog
+              courses={courses}
+              isVisitor={true}
+              onBack={() => setView('landing')}
+              onSelectCourse={() => setView('register')}
+              cart={[]}
+              onAddToCart={() => setView('register')}
+              onOpenCart={() => setView('register')}
+              onPreview={(course) => {
+                setActiveCourseId(course.id);
+                setIsPreviewMode(true);
+                setView('public-course-preview');
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'public-course-preview') {
+    const activeCourse = courses.find(c => c.id === activeCourseId);
+    return (
+      <div className="h-screen overflow-hidden bg-slate-100 flex flex-col">
+        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10">
+          <button
+            onClick={() => setView('public-catalog')}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-black uppercase tracking-widest text-[10px]"
+          >
+            <span className="material-symbols-outlined text-sm">arrow_back</span> Back to Catalog
+          </button>
+          <button onClick={() => setView('register')} className="bg-brand-500 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest">Join to Enroll</button>
+        </header>
+        <div className="flex-1 overflow-y-auto">
+          <CourseDetails
+            course={activeCourse}
+            previewMode={true}
+            onBack={() => setView('public-catalog')}
+            onStartLesson={() => setView('register')}
+            onTakeExam={() => setView('register')}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -795,7 +875,7 @@ const AppContent: React.FC = () => {
               title: 'Unit Knowledge Assessment',
               initialAnswers: activeUnitProgress?.quiz_answers,
               questions: dynamicExamQuestions,
-              isCompleted: activeUnitProgress?.quiz_score !== undefined && activeUnitProgress.quiz_score >= 50
+              isCompleted: activeUnitProgress?.quiz_score !== undefined
             }}
           />
         );
@@ -831,6 +911,15 @@ const AppContent: React.FC = () => {
         onRemoveItem={removeFromCart}
         onCheckout={handleCheckout}
       />
+      
+      {user && role === UserRole.STUDENT && (
+        <AIChatPopup 
+          userName={user.user_metadata?.full_name || 'Öğrenci'} 
+          currentPage={currentPage}
+          currentLesson={courses.find(c => c.id === activeCourseId)?.title || undefined}
+          courses={courses}
+        />
+      )}
     </div>
   );
 };

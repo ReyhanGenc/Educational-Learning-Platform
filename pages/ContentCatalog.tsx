@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../src/lib/supabase';
 
-import { Course } from '../types';
+import { Course, ACADEMIC_LEVELS } from '../types';
 
 interface ContentCatalogProps {
   courses: Course[];
@@ -11,16 +11,19 @@ interface ContentCatalogProps {
   onAddToCart: (course: Course) => void;
   onOpenCart: () => void;
   onPreview: (course: Course) => void;
+  isVisitor?: boolean;
+  onBack?: () => void;
 }
 
-const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: {
+const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart, isVisitor }: {
   course: Course;
   onSelectCourse: (id: string) => void;
   onAddToCart: (course: Course) => void;
   onPreview: (course: Course) => void;
   inCart: boolean;
+  isVisitor?: boolean;
 }) => (
-  <div className="bg-white rounded-[24px] shadow-[0_4px_30px_rgba(0,0,0,0.02)] border border-slate-200 overflow-hidden flex flex-col group hover:shadow-2xl transition-all duration-700 min-h-[650px]">
+  <div className="bg-white rounded-[24px] shadow-[0_4px_30px_rgba(0,0,0,0.02)] border border-slate-200 overflow-hidden flex flex-col group hover:shadow-2xl transition-all duration-700 h-[580px]">
     <div className="relative aspect-[4/5] overflow-hidden">
       <img src={course.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={course.title} />
       <div className="absolute top-8 left-8 flex flex-col gap-2">
@@ -35,8 +38,8 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: 
       </div>
     </div>
 
-    <div className="p-10 flex flex-col flex-1">
-      <div className="flex-1">
+    <div className="p-8">
+      <div>
         <h3 className="font-black text-slate-900 text-lg mb-4 leading-tight tracking-tight group-hover:text-brand-500 transition-colors uppercase line-clamp-2">
           {course.title}
         </h3>
@@ -44,12 +47,12 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: 
           <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${course.instructor}`} className="w-6 h-6 rounded-full ring-2 ring-slate-200" />
           <p className="text-[10px] font-black uppercase tracking-widest">{course.instructor}</p>
         </div>
-        <p className="text-[10px] text-slate-600 font-bold leading-relaxed mb-8">
+        <p className="text-[10px] text-slate-600 font-bold leading-relaxed">
           Integrated curriculum covering advanced methodologies within the {course.category} institutional framework.
         </p>
       </div>
 
-      <div className="space-y-8 mt-auto">
+      <div className="space-y-4 mt-6">
         {course.isPurchased ? (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -97,8 +100,10 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: 
                   onClick={() => onAddToCart(course)}
                   className="flex-1 bg-brand-500 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-600 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"
                 >
-                  Add to Cart
-                  <span className="material-symbols-outlined text-lg font-bold">shopping_cart</span>
+                  {isVisitor ? 'Join Us' : 'Add to Cart'}
+                  <span className="material-symbols-outlined text-lg font-bold">
+                    {isVisitor ? 'bolt' : 'shopping_cart'}
+                  </span>
                 </button>
               )}
               <button
@@ -121,9 +126,11 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart }: 
   </div>
 );
 
-const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse, cart, onAddToCart, onOpenCart, onPreview }) => {
+const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse, cart, onAddToCart, onOpenCart, onPreview, isVisitor, onBack }) => {
   const [localCourses, setLocalCourses] = useState<Course[]>(courses);
   const [searchQuery, setSearchQuery] = useState('');
+  const [eduLevelFilter, setEduLevelFilter] = useState('All Education Levels');
+  const [courseLevelFilter, setCourseLevelFilter] = useState('All Levels');
   const [activeTab, setActiveTab] = useState<'browse' | 'inprogress' | 'completed'>('browse');
 
   useEffect(() => {
@@ -134,15 +141,20 @@ const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse
   // If NOT searching, use tabs.
   const isSearching = searchQuery.length > 0;
 
-  const filteredAll = localCourses.filter(course =>
-    course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.instructor.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredAll = localCourses.filter(course => {
+    const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      course.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      course.instructor.toLowerCase().includes(searchQuery.toLowerCase());
 
-  const completedCourses = localCourses.filter(c => c.isPurchased && (c.progress >= 100 || (c.completed === c.total && c.total > 0)));
-  const purchasedCourses = localCourses.filter(c => c.isPurchased && !completedCourses.includes(c));
-  const availableCourses = localCourses.filter(c => !c.isPurchased);
+    const matchesEduLevel = eduLevelFilter === 'All Education Levels' || course.education_level === eduLevelFilter;
+    const matchesCourseLevel = courseLevelFilter === 'All Levels' || course.level === courseLevelFilter;
+
+    return matchesSearch && matchesEduLevel && matchesCourseLevel;
+  });
+
+  const completedCourses = filteredAll.filter(c => c.isPurchased && (c.progress >= 100 || (c.completed === c.total && c.total > 0)));
+  const purchasedCourses = filteredAll.filter(c => c.isPurchased && !completedCourses.includes(c));
+  const availableCourses = filteredAll.filter(c => !c.isPurchased);
 
   const renderGrid = (list: Course[]) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 animate-fade-in">
@@ -154,6 +166,7 @@ const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse
           onAddToCart={onAddToCart}
           onPreview={onPreview}
           inCart={!!cart.find(c => c.id === course.id)}
+          isVisitor={isVisitor}
         />
       ))}
     </div>
@@ -162,9 +175,23 @@ const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse
   return (
     <div className="p-6 lg:p-10 space-y-8 h-full overflow-hidden flex flex-col max-w-[1600px] mx-auto pb-24 text-slate-900">
       <header className="shrink-0 flex items-center justify-between">
-        <div className="flex-1">
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight uppercase tracking-[0.1em]">Curriculum Catalog</h1>
-          <p className="text-slate-600 mt-1 text-sm font-medium">Personalized Institutional Academic Pathways.</p>
+        <div className="flex-1 flex items-center gap-4">
+          {isVisitor && onBack && (
+            <button
+              onClick={onBack}
+              className="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+            </button>
+          )}
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight uppercase tracking-[0.1em]">
+              {isVisitor ? 'Course Catalog' : 'Curriculum Catalog'}
+            </h1>
+            <p className="text-slate-600 mt-1 text-sm font-medium">
+              {isVisitor ? 'Explore our institutional academic pathways.' : 'Personalized Institutional Academic Pathways.'}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-6 flex-1 justify-end">
           <div className="relative w-full max-w-md hidden md:block">
@@ -191,8 +218,64 @@ const ContentCatalog: React.FC<ContentCatalogProps> = ({ courses, onSelectCourse
         </div>
       </header>
 
-      {/* Tab Navigation (Hidden on Search) */}
-      {!isSearching && (
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 items-center bg-white/50 backdrop-blur-md p-6 rounded-[28px] border border-slate-200 shadow-sm animate-fade-in">
+        <div className="flex items-center gap-3 text-slate-700">
+          <span className="material-symbols-outlined font-black text-brand-500">tune</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">Filter Curriculum:</span>
+        </div>
+
+        <div className="flex flex-1 flex-wrap gap-4">
+          <div className="relative flex-1 min-w-[200px]">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">school</span>
+            <select
+              value={eduLevelFilter}
+              onChange={(e) => {
+                setEduLevelFilter(e.target.value);
+                setCourseLevelFilter('All Levels'); // Reset sub-level
+              }}
+              className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-brand-500 appearance-none cursor-pointer shadow-sm transition-all"
+            >
+              <option value="All Education Levels">All Education Levels</option>
+              {Object.keys(ACADEMIC_LEVELS).map(level => (
+                <option key={level} value={level}>{level}</option>
+              ))}
+            </select>
+            <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+          </div>
+
+          <div className="relative flex-1 min-w-[200px]">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">grade</span>
+            <select
+              value={courseLevelFilter}
+              onChange={(e) => setCourseLevelFilter(e.target.value)}
+              className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-brand-500 appearance-none cursor-pointer shadow-sm transition-all"
+            >
+              <option value="All Levels">All Levels</option>
+              {eduLevelFilter !== 'All Education Levels' && ACADEMIC_LEVELS[eduLevelFilter]?.map(lvl => (
+                <option key={lvl} value={lvl}>{lvl}</option>
+              ))}
+            </select>
+            <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+          </div>
+
+          {(eduLevelFilter !== 'All Education Levels' || courseLevelFilter !== 'All Levels') && (
+            <button
+              onClick={() => {
+                setEduLevelFilter('All Education Levels');
+                setCourseLevelFilter('All Levels');
+              }}
+              className="px-4 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-brand-600 transition-all shadow-lg active:scale-95"
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tab Navigation (Hidden on Search or Visitor Mode) */}
+      {!isSearching && !isVisitor && (
         <div className="flex gap-8 border-b border-slate-300 shrink-0 overflow-x-auto">
           {[
             { id: 'browse', label: 'Browse Catalog', icon: 'explore' },

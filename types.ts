@@ -4,6 +4,12 @@ export enum UserRole {
   INSTRUCTOR = 'INSTRUCTOR'
 }
 
+export const ACADEMIC_LEVELS: Record<string, string[]> = {
+  'Primary School': ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'],
+  'Middle School': ['Grade 5', 'Grade 6', 'Grade 7', 'Grade 8 (LGS Prep)'],
+  'High School': ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12 (Prep)', 'Graduate']
+};
+
 export interface Exam {
   id: string;
   title: string;
@@ -51,6 +57,7 @@ export interface Course {
 
   // New fields from DB schema
   description?: string;
+  education_level?: string;
   level?: string;
   rating?: number;
   total_duration?: string;
