@@ -203,6 +203,130 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
+      {/* AI Powered Showcase Section - Narrow, Flowing & Sparkling */}
+      <section className="bg-white py-24 relative overflow-hidden border-y border-slate-100">
+        {/* Soft Ambient Glows */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-200/20 rounded-full blur-[100px] pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-cyan-200/20 rounded-full blur-[100px] pointer-events-none"></div>
+
+        {/* Animation Area: Narrow Flowing & Undulating Ribbons & Gemini Sparkles */}
+        <div className="relative h-[300px] md:h-[450px] mb-12 flex items-center justify-center overflow-hidden">
+          {/* Moving SVG Ribbons - Increased Vertical Breadth */}
+          <div className="absolute inset-0 z-0 pointer-events-none flex items-center translate-y-4">
+            <svg className="w-[300%] h-[250px] md:h-[400px] absolute -left-[100%]" viewBox="0 0 1500 160" preserveAspectRatio="none">
+              {/* Ribbon 1 - Deep Blue - High Amplitude - Left Flow */}
+              <path
+                d="M0,80 C125,130 375,30 500,80 C625,130 875,30 1000,80 C1125,130 1375,30 1500,80"
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth="24"
+                strokeOpacity="0.4"
+                className="animate-ribbon-flow"
+                style={{ animationDuration: '10s' }}
+              />
+              {/* Ribbon 2 - Sky Blue - High Amplitude - Right Flow */}
+              <path
+                d="M0,80 C125,30 375,130 500,80 C625,30 875,130 1000,80 C1125,30 1375,130 1500,80"
+                fill="none"
+                stroke="#5ba3fbff"
+                strokeWidth="30"
+                strokeOpacity="0.3"
+                className="animate-ribbon-flow"
+                style={{ animationDuration: '15s', animationDelay: '-2s', animationDirection: 'reverse' }}
+              />
+              {/* Ribbon 3 - Light Blue - High Amplitude - Left Flow (Reversed in Path) */}
+              <path
+                d="M0,80 C100,120 400,40 500,80 C600,120 900,40 1000,80 C1100,120 1400,40 1500,80"
+                fill="none"
+                stroke="#7eb7f9ff"
+                strokeWidth="34"
+                strokeOpacity="0.2"
+                className="animate-ribbon-flow"
+                style={{ animationDuration: '12s', animationDelay: '-4s', animationDirection: 'reverse' }}
+              />
+              {/* Solid Accent Flowing Line - Max Amplitude - Left Flow */}
+              <path
+                d="M0,80 C150,140 350,20 500,80 C650,140 850,20 1000,80 C1150,140 1350,20 1500,80"
+                fill="none"
+                stroke="#cbd5e1"
+                strokeWidth="3"
+                strokeOpacity="0.5"
+                className="animate-ribbon-flow"
+                style={{ animationDuration: '8s', animationDelay: '-1s', animationDirection: 'reverse' }}
+              />
+            </svg>
+          </div>
+
+          {/* Flying Single 4-Pointed Diamonds - Clipping in white areas via Mask */}
+          <div className="absolute inset-0 pointer-events-none" style={{ maskImage: 'linear-gradient(to bottom, transparent, black 25%, black 75%, transparent)', WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 25%, black 75%, transparent)' }}>
+            {[...Array(32)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute animate-gemini-float"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 10}s`,
+                  animationDuration: `${6 + Math.random() * 8}s`,
+                  opacity: 0.2 + Math.random() * 0.4,
+                  perspective: '1000px'
+                }}
+              >
+                <div
+                  className="w-4 md:w-6 h-4 md:h-6 text-brand-500 animate-gemini-rotate-3d shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                  style={{
+                    animationDuration: `${3 + Math.random() * 5}s`,
+                    backfaceVisibility: 'hidden'
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
+                    <path d="M12 0C12 7 15.5 12 24 12C15.5 12 12 17 12 24C12 17 8.5 12 0 12C8.5 12 12 7 12 0Z" />
+                  </svg>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Central Text Content */}
+          <div className="relative z-10 text-center px-4">
+            <h2 className="text-4xl md:text-8xl font-black text-slate-900 uppercase tracking-[0.2em] relative z-10 filter drop-shadow-md">
+              AI <span className="text-brand-500">POWERED</span>
+            </h2>
+          </div>
+        </div>
+
+        {/* 3 Point Feature Cards Container */}
+        <div className="max-w-7xl mx-auto px-4 mt-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                title: "Personalized Roadmap",
+                desc: "Our neural engine crafts a dynamic study schedule tailored to your unique cognitive pace and goals.",
+                icon: "psychology"
+              },
+              {
+                title: "Smart Synthesis",
+                desc: "Transform complex text and lectures into structured, visual study guides in just one click.",
+                icon: "auto_awesome"
+              },
+              {
+                title: "24/7 Contextual Help",
+                desc: "Never get stuck again. Ask questions and get instant, logical explanations for any institutional concept.",
+                icon: "forum"
+              }
+            ].map((card, i) => (
+              <div key={i} className="group relative p-8 bg-white border border-slate-100 rounded-[32px] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-500 flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-500 mb-6 group-hover:bg-brand-500 group-hover:text-white transition-all duration-500">
+                  <span className="material-symbols-outlined text-3xl">{card.icon}</span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-3 uppercase tracking-tight">{card.title}</h3>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed">{card.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Feature Section */}
       <section id="features" className="py-32 px-4 bg-slate-50/50 relative">
         <div className="max-w-7xl mx-auto relative z-10">
@@ -368,12 +492,35 @@ const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Custom Styles for landing specific animations */}
       <style>{`
-        @keyframes bounce-subtle {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-5px); }
+        @keyframes ribbon-flow {
+          0% { transform: translateX(0) scaleY(1); }
+          50% { transform: translateX(-16.66%) scaleY(1.3); }
+          100% { transform: translateX(-33.33%) scaleY(1); }
         }
-        .animate-bounce-subtle {
-          animation: bounce-subtle 3s infinite ease-in-out;
+        @keyframes gemini-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-25px); }
+        }
+        @keyframes gemini-rotate-3d {
+          0% { transform: rotateY(0deg) scale(0.8); opacity: 0.4; }
+          50% { transform: rotateY(180deg) scale(1.1); opacity: 0.8; }
+          100% { transform: rotateY(360deg) scale(0.8); opacity: 0.4; }
+        }
+        @keyframes slide-glow {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .animate-ribbon-flow {
+          animation: ribbon-flow linear infinite;
+        }
+        .animate-gemini-float {
+          animation: gemini-float ease-in-out infinite;
+        }
+        .animate-gemini-rotate-3d {
+          animation: gemini-rotate-3d ease-in-out infinite;
+        }
+        .animate-slide-glow {
+          animation: slide-glow 2s linear infinite;
         }
         .no-scrollbar::-webkit-scrollbar {
           display: none;
