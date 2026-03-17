@@ -1,7 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../src/lib/supabase';
 import { Course, Chapter, Lesson } from '../types';
+import ScrollProgressBar from '../src/components/ScrollProgressBar';
 
 interface CourseDetailsProps {
   onBack: () => void;
@@ -15,6 +15,7 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewingIntro, setViewingIntro] = useState<Chapter | null>(null);
+  const introRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchCurriculum = async () => {
@@ -148,18 +149,40 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
         })
         .eq('id', enrollment.id);
 
-      setViewingIntro(null);
-      // Trigger global refresh
-      window.dispatchEvent(new Event('refresh-progress'));
-      // Local reload logic if needed, but App.tsx usually handles this via props refresh
+      // Trigger global refresh silently so that when the user goes back, 
+      // the CourseDetails (which is a parent) will have updated props.
+      window.dispatchEvent(new Event('refresh-progress')); 
     } catch (err) {
       console.error('Error completing intro:', err);
     }
   };
 
+  // Ensure scroll resets to top when opening a unit intro
+  useEffect(() => {
+    if (viewingIntro && introRef.current) {
+      // Use requestAnimationFrame or a very small timeout to ensure DOM is ready
+      const timer = setTimeout(() => {
+        if (introRef.current) {
+          introRef.current.scrollTop = 0;
+          // Also try scrolling the document just in case
+          window.scrollTo(0, 0);
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [viewingIntro]);
+
   if (viewingIntro) {
     return (
-      <div className="min-h-full bg-white flex flex-col p-8 lg:p-20 relative animate-fade-in overflow-y-auto">
+      <div 
+        ref={introRef}
+        className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 overflow-y-auto"
+      >
+        <ScrollProgressBar 
+          targetRef={introRef} 
+          onComplete={() => handleCompleteIntro(viewingIntro.id)}
+          isInitiallyCompleted={getIntroStatus(viewingIntro.id) === 'Completed'}
+        />
         <button
           onClick={() => setViewingIntro(null)}
           className="absolute top-10 left-10 flex items-center gap-2 text-slate-400 hover:text-slate-900 font-black uppercase tracking-widest text-[10px]"
@@ -167,12 +190,12 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
           <span className="material-symbols-outlined">arrow_back</span> Back
         </button>
 
-        <div className="max-w-3xl mx-auto w-full pt-10">
+        <div className="max-w-3xl mx-auto w-full pt-16 px-6 lg:px-0">
           <div className="flex items-center gap-3 text-brand-500 font-black uppercase tracking-widest text-xs mb-4">
             <span className="material-symbols-outlined">auto_stories</span>
             <span>{viewingIntro.title}</span>
           </div>
-          <h2 className="text-4xl font-black text-slate-900 tracking-tight uppercase mb-12">
+          <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight uppercase mb-12">
             {viewingIntro.title}
           </h2>
 
@@ -189,13 +212,6 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
           </div>
 
           <div className="mt-20 pt-10 border-t border-slate-100 flex justify-center">
-            <button
-              onClick={() => handleCompleteIntro(viewingIntro.id)}
-              className="px-8 py-5 bg-slate-100 text-slate-700 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-sm hover:bg-slate-200 transition-all active:scale-95 flex items-center gap-4 border border-slate-200"
-            >
-              <span className="material-symbols-outlined font-black">verified</span>
-              Understood & Continue
-            </button>
             <button
               onClick={() => {
                 handleCompleteIntro(viewingIntro.id);

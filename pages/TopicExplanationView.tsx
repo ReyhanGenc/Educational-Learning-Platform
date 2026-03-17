@@ -1,7 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StandaloneTopic } from '../src/data/standalone_topics';
 import { supabase } from '../src/lib/supabase';
+import ScrollProgressBar from '../src/components/ScrollProgressBar';
 
 interface TopicExplanationViewProps {
     topicId: string;
@@ -11,6 +11,7 @@ interface TopicExplanationViewProps {
 const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, onBack }) => {
     const [topic, setTopic] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const mainRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const fetchTopic = async () => {
@@ -68,6 +69,7 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
 
     return (
         <div className="flex flex-col h-full bg-white relative animate-fade-in overflow-hidden">
+            <ScrollProgressBar targetRef={mainRef} />
             <div className="absolute top-6 left-6 z-20 flex items-center gap-3">
                 <button
                     onClick={onBack}
@@ -78,7 +80,7 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
                 </button>
             </div>
 
-            <main className="flex-1 overflow-y-auto custom-scrollbar pb-32 w-full">
+            <main ref={mainRef} className="flex-1 overflow-y-auto custom-scrollbar pb-32 w-full">
                 <div className="max-w-3xl mx-auto">
                     <header className="px-5 pt-32 pb-4">
                         <div className="flex items-center gap-2 text-brand-500 text-xs mb-3 font-black uppercase tracking-widest">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { 
   MessageCircle, X, Send, Bot, User, Sparkles, Loader2, 
   PlusCircle, History as HistoryIcon, ChevronLeft, Clock 
@@ -26,6 +26,7 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
   const [isLoading, setIsLoading] = useState(false);
   const [educationLevel, setEducationLevel] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragControls = useDragControls();
 
   // Load chat history and education level from Supabase
   useEffect(() => {
@@ -144,7 +145,13 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end">
+    <motion.div 
+      drag
+      dragControls={dragControls}
+      dragListener={false}
+      dragMomentum={false}
+      className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end touch-none"
+    >
       {/* Chat Window */}
       <AnimatePresence>
         {isOpen && (
@@ -155,10 +162,14 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
             className="mb-4 w-[380px] h-[550px] bg-white/80 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl overflow-hidden flex flex-col shadow-brand-500/10"
           >
             {/* Header */}
-            <div className="p-4 bg-gradient-to-r from-brand-600 to-brand-500 text-white flex items-center justify-between">
+            <div 
+              onPointerDown={(e) => dragControls.start(e)}
+              className="p-4 bg-gradient-to-r from-brand-600 to-brand-500 text-white flex items-center justify-between cursor-grab active:cursor-grabbing"
+            >
               <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => setIsHistoryView(!isHistoryView)}
+                  onClick={(e) => { e.stopPropagation(); setIsHistoryView(!isHistoryView); }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   className={`w-10 h-10 ${isHistoryView ? 'bg-white text-brand-600' : 'bg-white/20 text-white'} rounded-xl flex items-center justify-center backdrop-blur-md transition-all hover:scale-105 active:scale-95`}
                   title="History"
                 >
@@ -173,7 +184,8 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
                 </div>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={(e) => { e.stopPropagation(); setIsOpen(false); }}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -325,10 +337,11 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
 
       {/* Floating Toggle Button */}
       <motion.button
+        onPointerDown={(e) => dragControls.start(e)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-16 h-16 bg-gradient-to-br from-brand-500 to-brand-600 text-white rounded-full shadow-2xl flex items-center justify-center shadow-brand-500/40 relative group overflow-hidden"
+        onTap={() => setIsOpen(!isOpen)}
+        className="w-16 h-16 bg-gradient-to-br from-brand-500 to-brand-600 text-white rounded-full shadow-2xl flex items-center justify-center shadow-brand-500/40 relative group overflow-hidden cursor-grab active:cursor-grabbing"
       >
         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
         <AnimatePresence mode="wait">
@@ -355,7 +368,7 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
           )}
         </AnimatePresence>
       </motion.button>
-    </div>
+    </motion.div>
   );
 };
 

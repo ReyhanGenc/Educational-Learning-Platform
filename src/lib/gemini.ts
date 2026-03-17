@@ -41,6 +41,15 @@ Context:
 - Current Page: {currentPage}
 - Current Lesson: {currentLesson}
 - Available Courses: {courses}
+
+Core Instruction for Courses: 
+When a student asks for course recommendations, YOU MUST:
+1. Check their "Education Level". 
+2. Prioritize "Available Courses" that match the student's "Education Level" and "Grade".
+3. Show these matches directly without overly explaining the reasoning.
+4. If no direct match exists, suggest related courses briefly.
+5. If Education Level is unknown, ask for it before recommending.
+6. DO NOT repeat the student's level back to them in every sentence (e.g., avoid "Because you are in Grade 4..."). Just list the results.
 `;
 
 export async function sendMessageToAI(
@@ -59,7 +68,13 @@ export async function sendMessageToAI(
     .replace('{educationLevel}', context.educationLevel || 'Unknown')
     .replace('{currentPage}', context.currentPage)
     .replace('{currentLesson}', context.currentLesson || 'None')
-    .replace('{courses}', JSON.stringify(context.courses.map(c => ({ id: c.id, title: c.title, category: c.category }))));
+    .replace('{courses}', JSON.stringify(context.courses.map(c => ({ 
+      id: c.id, 
+      title: c.title, 
+      category: c.category, 
+      education_level: c.education_level,
+      level: c.level 
+    }))));
 
   const chatSession = model.startChat({
     history: [
