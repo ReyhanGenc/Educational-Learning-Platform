@@ -179,7 +179,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
 
       const { data: results } = await supabase
         .from('exam_results')
-        .select('id, score, exam_id, total_questions, correct_answers, time_spent_seconds, created_at, exams(subject)')
+        .select('id, score, exam_id, total_questions, correct_answers, time_spent_seconds, exams(subject)')
         .eq('user_id', user!.id);
 
       let examsPassed = 0;

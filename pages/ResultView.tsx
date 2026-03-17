@@ -95,28 +95,50 @@ const ResultView: React.FC<ResultViewProps> = ({ onBack, examId, resultId, examD
 
           // Fetch questions for standard exam to show review
           const { data: qData } = await supabase.from('exam_questions').select('*').eq('exam_id', examId).order('order_num', { ascending: true });
-          if (qData) setQuestions(qData as any);
+          
+          let currentQuestions: ExamQuestion[] = [];
+          if (qData && qData.length > 0) {
+            currentQuestions = qData as any;
+          } else if (eData && Array.isArray(eData.questions)) {
+            currentQuestions = eData.questions as any;
+          }
+          setQuestions(currentQuestions);
 
           if (user) {
             let query = supabase
               .from('exam_results')
-              .select('id, user_id, exam_id, score, answers, total_questions, correct_answers, incorrect_answers, time_spent_seconds, created_at')
+              .select('id, user_id, exam_id, score, answers, total_questions, correct_answers, incorrect_answers, time_spent_seconds')
               .eq('exam_id', examId)
               .eq('user_id', user.id);
 
             if (resultId) {
               query = query.eq('id', resultId);
             } else {
-              query = query.limit(1);
+              // Fallback to id ordering if created_at is missing in this table
+              query = query.order('id', { ascending: false }).limit(1);
             }
 
             const { data: rData, error: rError } = await query.maybeSingle();
             if (rError) console.error('ResultView: Error fetching exam result:', rError);
+            
             if (rData) {
-              console.log('ResultView successfully fetched rData:', rData);
+              // Backward compatibility: If result is missing breakdown, calculate it
+              if ((rData.correct_answers === null || rData.correct_answers === undefined) && rData.answers && currentQuestions.length > 0) {
+                let c = 0; let i = 0;
+                currentQuestions.forEach((q, idx) => {
+                  const ans = rData.answers[idx + 1];
+                  const correctId = q.correct_option_id || (q as any).correctOptionId;
+                  if (ans) {
+                    if (ans === correctId) c++;
+                    else i++;
+                  }
+                });
+                rData.correct_answers = c;
+                rData.incorrect_answers = i;
+                rData.total_questions = currentQuestions.length;
+              }
+              
               setResult(rData as any);
-            } else {
-              console.log('ResultView fetched no rData for user', user.id, 'and exam', examId);
             }
           }
         }

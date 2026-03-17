@@ -161,7 +161,11 @@ const ExamTaker: React.FC<ExamTakerProps> = ({ onExit, onSubmit, onComplete, exa
           user_id: user.id,
           exam_id: examId,
           score: score || 0,
-          answers: answers
+          answers: answers,
+          total_questions: questions.length,
+          correct_answers: correctCount,
+          incorrect_answers: incorrectCount,
+          time_spent_seconds: Math.floor(timeSpent || 0)
         }).select('id').maybeSingle();
 
         if (error) {

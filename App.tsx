@@ -773,7 +773,7 @@ const AppContent: React.FC = () => {
           }}
         />;
       case 'exams':
-        return <ExamList role={role!} onTakeExam={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-taker'); }} onViewResults={(id: string, resultId?: string) => { setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} />;
+        return <ExamList role={role!} onTakeExam={(id: string, resultId?: string) => { setActiveExamLessonId(null); setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-taker'); }} onViewResults={(id: string, resultId?: string) => { setActiveExamLessonId(null); setActiveExamId(id); setActiveResultId(resultId || null); setCurrentPage('exam-result'); }} />;
       case 'exam-result':
         const rExamId = activeExamLessonId ? `unit-${activeExamLessonId}` : activeExamId;
         return (
