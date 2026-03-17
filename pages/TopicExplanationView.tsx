@@ -69,7 +69,7 @@ const TopicExplanationView: React.FC<TopicExplanationViewProps> = ({ topicId, on
 
     return (
         <div className="flex flex-col h-full bg-white relative animate-fade-in overflow-hidden">
-            <ScrollProgressBar targetRef={mainRef} />
+            <ScrollProgressBar targetRef={mainRef} showPercentageOnly={true} />
             <div className="absolute top-6 left-6 z-20 flex items-center gap-3">
                 <button
                     onClick={onBack}

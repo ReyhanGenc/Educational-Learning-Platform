@@ -288,7 +288,7 @@ const LessonView: React.FC<LessonViewProps> = ({ onBack, courseId, initialLesson
 
   return (
     <div className="flex flex-col h-full bg-white text-slate-900">
-      {mainRef && <ScrollProgressBar targetRef={mainRef} />}
+      {mainRef && <ScrollProgressBar targetRef={mainRef} showPercentageOnly={true} />}
       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="material-symbols-outlined text-brand-500 p-2 hover:bg-brand-50 rounded-full font-bold">arrow_back</button>

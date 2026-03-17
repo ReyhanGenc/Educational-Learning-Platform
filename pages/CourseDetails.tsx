@@ -151,7 +151,7 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
 
       // Trigger global refresh silently so that when the user goes back, 
       // the CourseDetails (which is a parent) will have updated props.
-      window.dispatchEvent(new Event('refresh-progress')); 
+      window.dispatchEvent(new Event('refresh-progress'));
     } catch (err) {
       console.error('Error completing intro:', err);
     }
@@ -174,17 +174,20 @@ const CourseDetails: React.FC<CourseDetailsProps> = ({ course, onBack, onStartLe
 
   if (viewingIntro) {
     return (
-      <div 
+      <div
         ref={introRef}
         className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 overflow-y-auto"
       >
-        <ScrollProgressBar 
-          targetRef={introRef} 
+        <ScrollProgressBar
+          targetRef={introRef}
           onComplete={() => handleCompleteIntro(viewingIntro.id)}
           isInitiallyCompleted={getIntroStatus(viewingIntro.id) === 'Completed'}
         />
         <button
-          onClick={() => setViewingIntro(null)}
+          onClick={() => {
+            setViewingIntro(null);
+            window.dispatchEvent(new Event('refresh-progress'));
+          }}
           className="absolute top-10 left-10 flex items-center gap-2 text-slate-400 hover:text-slate-900 font-black uppercase tracking-widest text-[10px]"
         >
           <span className="material-symbols-outlined">arrow_back</span> Back
