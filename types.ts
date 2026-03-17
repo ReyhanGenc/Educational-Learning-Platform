@@ -6,8 +6,8 @@ export enum UserRole {
 
 export const ACADEMIC_LEVELS: Record<string, string[]> = {
   'Primary School': ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'],
-  'Middle School': ['Grade 5', 'Grade 6', 'Grade 7', 'Grade 8 (LGS Prep)'],
-  'High School': ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12 (Prep)', 'Graduate']
+  'Middle School': ['Grade 5', 'Grade 6', 'Grade 7', 'Grade 8'],
+  'High School': ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
 };
 
 export interface Exam {

@@ -138,7 +138,7 @@ const AppContent: React.FC = () => {
       // 4. Fetch featured lessons for landing page
       const { data: featuredData } = await supabase
         .from('lessons')
-        .select('id, title, category, image_url, content_blocks, chapters(title, courses(id, title, category, image))')
+        .select('id, title, category, image_url, content_blocks, chapters(title, courses(id, title, category, image, education_level, level))')
         .limit(6);
 
       if (featuredData) {
@@ -162,6 +162,8 @@ const AppContent: React.FC = () => {
             courseId: course?.id || '',
             courseTitle: course?.title || 'Standalone Subject',
             category: item.category || course?.category || 'Educational',
+            education_level: course?.education_level || 'General',
+            level: course?.level || '',
             image: item.image_url || course?.image || `https://picsum.photos/seed/${item.id}/600/400`
           };
         });
@@ -371,8 +373,6 @@ const AppContent: React.FC = () => {
       await fetchData();
 
       setCurrentPage('dashboard');
-
-      alert('Payment Successful! You can now access your new courses.');
     } catch (error: any) {
       console.error('Payment Error:', error);
       // specific error handling

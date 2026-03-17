@@ -22,14 +22,22 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
   const [metrics, setMetrics] = useState({
     activeCourses: 0,
     lessonsPassed: 0,
-    avgGpa: 0,
+    activeProgress: 0,
+    completedCourses: 0,
     examsPassed: 0
   });
   const [activityData, setActivityData] = useState<any[]>([]);
   const [radarData, setRadarData] = useState<any[]>([]);
   const [recentLessons, setRecentLessons] = useState<any[]>([]);
-
-
+  
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  };
   useEffect(() => {
     if (!isInstructor && user) {
       fetchStudentData();
@@ -142,7 +150,8 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
       setMetrics({
         activeCourses: courseIds.length,
         lessonsPassed: totalStudents,
-        avgGpa: avgGrade,
+        activeProgress: 0,
+        completedCourses: 0,
         examsPassed: assessmentsDone
       });
 
@@ -157,8 +166,16 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
     try {
       setLoading(true);
 
-      const activeCourses = courses.filter(c => c.isPurchased).length;
+      const purchasedCourses = courses.filter(c => c.isPurchased);
+      const activeCourses = purchasedCourses.filter(c => (c.progress || 0) < 100);
+      const activeCoursesCount = activeCourses.length;
+      const completedCoursesCount = purchasedCourses.filter(c => (c.progress || 0) >= 100).length;
       const lessonsPassed = courses.reduce((acc, c) => acc + (c.completed || 0), 0);
+      
+      let totalActiveProgress = 0;
+      if (activeCoursesCount > 0) {
+        totalActiveProgress = activeCourses.reduce((acc, c) => acc + (c.progress || 0), 0) / activeCoursesCount;
+      }
 
       const { data: results } = await supabase
         .from('exam_results')
@@ -203,17 +220,11 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
         });
       }
 
-      let avgScore = 0;
-      let avgGpa = 0.00;
-      if (completedExamsCount > 0) {
-        avgScore = totalScore / completedExamsCount;
-        avgGpa = (avgScore / 25);
-      }
-
       setMetrics({
-        activeCourses,
+        activeCourses: activeCoursesCount,
         lessonsPassed,
-        avgGpa: Number(avgGpa.toFixed(2)),
+        activeProgress: Math.round(totalActiveProgress),
+        completedCourses: completedCoursesCount,
         examsPassed
       });
 
@@ -267,7 +278,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
   if (isInstructor) {
     const dynamicClassMetrics = [
       { label: 'Total Students', value: metrics.lessonsPassed.toLocaleString(), icon: 'groups', color: 'indigo' },
-      { label: 'Avg. Class Grade', value: `${Number(metrics.avgGpa).toFixed(2)}%`, icon: 'trending_up', color: 'emerald' },
+      { label: 'Completed Courses', value: metrics.completedCourses.toString(), icon: 'military_tech', color: 'emerald' },
       { label: 'Active Courses', value: metrics.activeCourses.toString(), icon: 'menu_book', color: 'brand' },
       { label: 'Assessments Done', value: metrics.examsPassed.toLocaleString(), icon: 'fact_check', color: 'amber' }
     ];
@@ -291,8 +302,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
             <button className="bg-white border border-slate-300 p-3 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
               <span className="material-symbols-outlined text-slate-700 text-xl">notifications</span>
             </button>
-            <div className="w-12 h-12 rounded-xl bg-slate-900 p-0.5 shadow-lg cursor-pointer hover:scale-105 transition-transform overflow-hidden ring-2 ring-white">
-              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userMetadata?.full_name || 'Instructor'}`} alt="Profile" className="w-full h-full object-cover rounded-lg" />
+            <div className="w-12 h-12 rounded-xl bg-slate-900 shadow-lg cursor-pointer hover:scale-105 transition-transform flex items-center justify-center ring-2 ring-white overflow-hidden">
+              <span className="text-white font-black text-sm tracking-tighter">
+                {getInitials(userMetadata?.full_name || 'Instructor')}
+              </span>
             </div>
           </div>
         </header>
@@ -357,6 +370,7 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
                         <span className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{course.title}</span>
                         <div className="flex items-center gap-2">
                           <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[8px] font-black text-brand-400 uppercase tracking-widest">{course.completed || 0} / {course.total || 0} UNITS COMPLETED</span>
+                          <span className="text-slate-500 text-[8px] font-black uppercase tracking-widest">• {course.education_level} {course.level}</span>
                         </div>
                       </div>
                       <span className="text-white text-xs font-black">{course.progress}%</span>
@@ -410,8 +424,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
               </span>
             )}
           </button>
-          <div className="w-12 h-12 rounded-xl bg-brand-500 p-0.5 shadow-lg shadow-brand-500/10 cursor-pointer hover:scale-105 transition-transform overflow-hidden ring-2 ring-white">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" alt="Profile" className="w-full h-full object-cover rounded-lg" />
+          <div className="w-12 h-12 rounded-xl bg-brand-500 shadow-lg shadow-brand-500/10 cursor-pointer hover:scale-105 transition-transform flex items-center justify-center ring-2 ring-white overflow-hidden">
+            <span className="text-white font-black text-sm tracking-tighter">
+              {getInitials(userMetadata?.full_name || 'Student')}
+            </span>
           </div>
         </div>
       </header>
@@ -419,9 +435,9 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
       {/* Primary Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
         {[
-          { id: 'content', label: 'Active Courses', value: metrics.activeCourses.toString().padStart(2, '0'), icon: 'auto_stories', color: 'indigo', progress: metrics.activeCourses > 0 ? 100 : 0 },
+          { id: 'content', label: 'Active Courses', value: metrics.activeCourses.toString().padStart(2, '0'), icon: 'auto_stories', color: 'indigo', progress: metrics.activeProgress },
           { id: 'lessons-list', label: 'Lessons Passed', value: metrics.lessonsPassed.toString().padStart(2, '0'), icon: 'description', color: 'brand', progress: metrics.lessonsPassed > 0 ? 100 : 0 },
-          { id: 'analysis', label: 'Average GPA', value: metrics.avgGpa.toFixed(2), icon: 'military_tech', color: 'emerald', progress: (metrics.avgGpa / 4.0) * 100 },
+          { id: 'content', label: 'Completed Courses', value: (metrics as any).completedCourses?.toString().padStart(2, '0') || '00', icon: 'military_tech', color: 'emerald', progress: (metrics as any).completedCourses > 0 ? 100 : 0 },
           { id: 'exams', label: 'Exams Passed', value: metrics.examsPassed.toString().padStart(2, '0'), icon: 'quiz', color: 'amber', progress: (metrics.examsPassed / (metrics.examsPassed + 1 || 1)) * 100 }
         ].map((stat, i) => (
           <div

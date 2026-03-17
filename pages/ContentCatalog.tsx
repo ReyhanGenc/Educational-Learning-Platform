@@ -30,6 +30,9 @@ const CourseCard = ({ course, onSelectCourse, onAddToCart, onPreview, inCart, is
         <span className="bg-white/95 backdrop-blur-md py-2 px-4 rounded-lg text-[8px] font-black text-slate-900 uppercase tracking-widest shadow-lg border border-slate-200">
           {course.category}
         </span>
+        <span className="bg-indigo-50/90 backdrop-blur-md py-1.5 px-3 rounded-lg text-[7px] font-black text-indigo-700 uppercase tracking-[0.15em] shadow-md border border-indigo-100/50 w-fit">
+          {course.education_level} {course.level && `• ${course.level}`}
+        </span>
         {course.isPurchased && (
           <span className="bg-brand-500 text-white py-2 px-4 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-lg">
             {course.progress}% Completed

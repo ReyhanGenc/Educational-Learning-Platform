@@ -175,9 +175,12 @@ const LandingPage: React.FC<LandingPageProps> = ({
                 >
                   <div className="aspect-[4/3] overflow-hidden relative">
                     <img src={lesson.image || `https://picsum.photos/seed/${lesson.id}/1200/800`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={lesson.title} />
-                    <div className="absolute top-6 left-6">
+                    <div className="absolute top-6 left-6 flex flex-col gap-2">
                       <span className="bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-900 shadow-sm">
-                        {lesson.category} • {lesson.courseTitle}
+                        {lesson.category}
+                      </span>
+                      <span className="bg-indigo-500/90 backdrop-blur-sm px-3 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest text-white shadow-sm w-fit">
+                        {lesson.education_level} {lesson.level && `• ${lesson.level}`}
                       </span>
                     </div>
                   </div>
@@ -284,6 +287,9 @@ const LandingPage: React.FC<LandingPageProps> = ({
                   <div className="absolute top-6 left-6 flex flex-col gap-2">
                     <span className="bg-white/95 backdrop-blur-md py-1.5 px-3 rounded-lg text-[8px] font-black text-slate-900 uppercase tracking-widest shadow-lg border border-slate-200">
                       {course.category}
+                    </span>
+                    <span className="bg-indigo-500/90 backdrop-blur-sm px-2.5 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest text-white shadow-lg w-fit">
+                      {course.education_level} {course.level && `• ${course.level}`}
                     </span>
                   </div>
                 </div>
