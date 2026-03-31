@@ -20,7 +20,7 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
   const [isOpen, setIsOpen] = useState(false);
   const [isChatStarted, setIsChatStarted] = useState(false);
   const [isHistoryView, setIsHistoryView] = useState(false);
-  const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
+  const [messages, setMessages] = useState<{ id: string; role: 'user' | 'bot'; text: string; timestamp?: number }[]>([]);
   const [pastSessions, setPastSessions] = useState<{ id: string; date: string; messages: any[] }[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +32,7 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
   useEffect(() => {
     if (user) {
       const loadProfile = async () => {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('profiles')
           .select('education_level, ai_chat_history, ai_past_sessions')
           .eq('id', user.id)
@@ -40,13 +40,49 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
 
         if (data) {
           setEducationLevel(data.education_level);
-          if (data.ai_chat_history && Array.isArray(data.ai_chat_history) && data.ai_chat_history.length > 0) {
-            setMessages(data.ai_chat_history);
-            setIsChatStarted(true);
+          
+          let dbHistory = data.ai_chat_history || [];
+          let dbPast = data.ai_past_sessions || [];
+          
+          // Logic: If it's a fresh visit (not a refresh/navigation in same tab),
+          // archive the previous active chat if it's not empty.
+          const isFreshVisit = !sessionStorage.getItem(`chat_session_active_${user.id}`);
+          
+          if (isFreshVisit && dbHistory.length > 0) {
+            const archivedSession = {
+              id: Date.now().toString(),
+              date: new Date().toLocaleString(),
+              messages: [...dbHistory]
+            };
+            dbPast = [archivedSession, ...dbPast];
+            dbHistory = [];
+            
+            // Sync immediately to DB
+            await supabase.from('profiles').update({ 
+              ai_chat_history: [],
+              ai_past_sessions: dbPast 
+            }).eq('id', user.id);
           }
-          if (data.ai_past_sessions && Array.isArray(data.ai_past_sessions)) {
-            setPastSessions(data.ai_past_sessions);
-          }
+          
+          // Mark this tab as having an active session now
+          sessionStorage.setItem(`chat_session_active_${user.id}`, 'true');
+
+          // Ensure all messages have IDs (retroactive fix)
+          const ensureIds = (msgs: any[]) => msgs.map((m, i) => ({
+            id: m.id || `msg_${Date.now()}_legacy_${i}`,
+            role: m.role,
+            text: m.text,
+            timestamp: m.timestamp || Date.now()
+          }));
+
+          setMessages(ensureIds(dbHistory));
+          setPastSessions(dbPast.map((s: any) => ({
+            ...s,
+            messages: ensureIds(s.messages)
+          })));
+          
+          // Only auto-start chatting if we are in the middle of a session (dbHistory not empty)
+          setIsChatStarted(dbHistory.length > 0);
         }
       };
       loadProfile();
@@ -61,14 +97,31 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
   }, [messages, isLoading, isChatStarted, isHistoryView]);
 
   const startChat = async () => {
+    // If there's an existing chat history, archive it before starting fresh
+    if (messages.length > 0) {
+      await startNewChat();
+    }
+    
     setIsChatStarted(true);
     setIsHistoryView(false);
-    if (!educationLevel) {
-      const welcomeMsg = `Hello ${userName}! I'm your AI assistant for EduExam. To help you better, could you please tell me your education level (Primary, Middle, or High School) and your current grade?`;
-      setMessages([{ role: 'bot', text: welcomeMsg }]);
-    } else {
-      const welcomeMsg = `Welcome back ${userName}! How can I help you today?`;
-      setMessages(prev => prev.length === 0 ? [{ role: 'bot', text: welcomeMsg }] : prev);
+    
+    const welcomeMsg = !educationLevel 
+      ? `Merhaba ${userName}! Ben EduExam AI asistanıyım. Sana daha iyi yardımcı olabilmem için eğitim seviyeni (İlkokul, Ortaokul veya Lise) ve sınıfını söyler misin?`
+      : `Tekrar merhaba ${userName}! Bugün sana nasıl yardımcı olabilirim?`;
+    
+    const initialMessages = [{ 
+      id: `msg_${Date.now()}_bot`,
+      role: 'bot' as const, 
+      text: welcomeMsg,
+      timestamp: Date.now()
+    }];
+    setMessages(initialMessages);
+    
+    // Save the new session start to DB
+    if (user) {
+      await supabase.from('profiles').update({ 
+        ai_chat_history: initialMessages 
+      }).eq('id', user.id);
     }
   };
 
@@ -80,16 +133,18 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
         date: new Date().toLocaleString(),
         messages: [...messages]
       };
-      const updatedSessions = [newSession, ...pastSessions].slice(0, 10); // Keep last 10 sessions
+      const updatedSessions = [newSession, ...pastSessions]; // Removed .slice(0, 10)
       
       setPastSessions(updatedSessions);
       setMessages([]);
       setIsChatStarted(false);
       
-      await supabase.from('profiles').update({ 
-        ai_chat_history: [],
-        ai_past_sessions: updatedSessions 
-      }).eq('id', user.id);
+      if (user) {
+        await supabase.from('profiles').update({ 
+          ai_chat_history: [],
+          ai_past_sessions: updatedSessions 
+        }).eq('id', user.id);
+      }
     } else {
       setIsChatStarted(false);
       setMessages([]);
@@ -103,8 +158,15 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
 
     if (!isChatStarted) setIsChatStarted(true);
     
+    const userMsgObj = { 
+      id: `msg_${Date.now()}_user`,
+      role: 'user' as const, 
+      text: userMsg,
+      timestamp: Date.now()
+    };
+    
     setInputText('');
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setMessages(prev => [...prev, userMsgObj]);
     setIsLoading(true);
 
     try {
@@ -130,15 +192,28 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
         await supabase.from('profiles').update({ education_level: detectedLevel }).eq('id', user.id);
       }
 
-      setMessages(prev => [...prev, { role: 'bot', text: aiResponse.message }]);
+      const botMsgObj = { 
+        id: `msg_${Date.now()}_bot`,
+        role: 'bot' as const, 
+        text: aiResponse.message,
+        timestamp: Date.now()
+      };
+
+      setMessages(prev => [...prev, botMsgObj]);
 
       // Persist chat history
-      const newHistory = [...messages, { role: 'user', text: userMsg }, { role: 'bot', text: aiResponse.message }];
-      await supabase.from('profiles').update({ ai_chat_history: newHistory.slice(-20) }).eq('id', user.id);
+      const newHistory = [...messages, userMsgObj, botMsgObj];
+      await supabase.from('profiles').update({ ai_chat_history: newHistory }).eq('id', user.id);
 
     } catch (error) {
       console.error('Chat error:', error);
-      setMessages(prev => [...prev, { role: 'bot', text: 'Sorry, an error occurred. Please try again.' }]);
+      const errorMsgObj = { 
+        id: `msg_${Date.now()}_err`,
+        role: 'bot' as const, 
+        text: 'Sorry, an error occurred. Please try again.',
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, errorMsgObj]);
     } finally {
       setIsLoading(false);
     }
@@ -238,7 +313,7 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
                     </div>
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-800 text-lg">Welcome {userName}!</h4>
+                    <h4 className="font-bold text-slate-800 text-lg">Hoş geldin {userName}!</h4>
                     <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
                       I'm your AI personal assistant. Let's get started by setting up your profile.
                     </p>
@@ -260,7 +335,7 @@ const AIChatPopup: React.FC<AIChatPopupProps> = ({ userName, currentPage, curren
                         <Bot className="w-8 h-8" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-800">Hello {userName}!</h4>
+                        <h4 className="font-bold text-slate-800">Merhaba {userName}!</h4>
                         <p className="text-xs text-slate-500 mt-1">
                           How can I help you with your studies today?
                         </p>
