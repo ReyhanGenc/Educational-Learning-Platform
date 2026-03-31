@@ -94,7 +94,7 @@ const Management: React.FC = () => {
         const { data: taughtData, error: taughtError } = await supabase
           .from('courses')
           .select('*, chapters(id, lessons(id))')
-          .eq('instructor', instructorName)
+          .ilike('instructor', `%${instructorName}%`)
           .order('created_at', { ascending: false });
 
         if (ownedError) console.error('Error fetching owned courses:', ownedError);
@@ -110,25 +110,38 @@ const Management: React.FC = () => {
 
         setRealCourses(combined);
       } else if (activeTab === 'exams') {
-        const { data, error } = await supabase
+        const { data: ownedExams, error: ownedError } = await supabase
           .from('exams')
           .select('*')
           .eq('user_id', userId)
-          .is('chapter_id', null) // Filter out course-specific unit exams
+          .is('chapter_id', null)
           .order('created_at', { ascending: false });
 
-        if (error) {
-          console.error('Error fetching exams:', error);
-          // Fallback to standalone exams if user_id filter fails
+        const { data: taughtExams, error: taughtError } = await supabase
+          .from('exams')
+          .select('*')
+          .ilike('instructor', `%${instructorName}%`)
+          .is('chapter_id', null)
+          .order('created_at', { ascending: false });
+
+        if (ownedError || taughtError) {
+          console.error('Error fetching exams:', ownedError || taughtError);
           const { data: all } = await supabase.from('exams').select('*').is('chapter_id', null).limit(20);
           setRealExams(all || []);
         } else {
-          setRealExams(data || []);
+          // Merge and deduplicate
+          const combinedExams = [...(ownedExams || [])];
+          (taughtExams || []).forEach((te: any) => {
+            if (!combinedExams.find(e => e.id === te.id)) {
+              combinedExams.push(te);
+            }
+          });
+          setRealExams(combinedExams);
         }
       } else if (activeTab === 'lessons') {
         // 1. Get IDs of courses owned/taught by the user (Separate queries to avoid OR parser issues)
         const { data: ownedC } = await supabase.from('courses').select('id').eq('user_id', userId);
-        const { data: taughtC } = await supabase.from('courses').select('id').eq('instructor', instructorName);
+        const { data: taughtC } = await supabase.from('courses').select('id').ilike('instructor', `%${instructorName}%`);
 
         const courseIds = [...new Set([
           ...(ownedC?.map(c => c.id) || []),

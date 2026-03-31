@@ -81,13 +81,24 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
       const instructorName = userMetadata?.full_name || 'Anonymous Instructor';
 
       // 1. Fetch Instructor's Courses
-      const { data: instCourses, error: courseError } = await supabase
+      const { data: ownedCourses, error: ownedError } = await supabase
         .from('courses')
-        .select('id')
-        .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`);
+        .select('id, created_at')
+        .eq('user_id', userId);
 
-      if (courseError) throw courseError;
-      const courseIds = instCourses?.map(c => c.id) || [];
+      const { data: taughtCourses, error: taughtError } = await supabase
+        .from('courses')
+        .select('id, created_at')
+        .ilike('instructor', `%${instructorName}%`);
+
+      if (ownedError || taughtError) throw (ownedError || taughtError);
+
+      // Merge and remove duplicates by ID
+      const allInstCourses = Array.from(new Map(
+        [...(ownedCourses || []), ...(taughtCourses || [])].map(item => [item.id, item])
+      ).values());
+
+      const courseIds = allInstCourses.map(c => c.id);
 
       // 2. Fetch Enrollments
       let totalStudents = 0;
@@ -100,20 +111,26 @@ const Dashboard: React.FC<DashboardProps> = ({ role, courses = [], onNavigate, c
       }
 
       // 3. Fetch Instructor's Exams
-      const { data: instExams } = await supabase
+      const { data: ownedExams } = await supabase
         .from('exams')
         .select('id')
-        .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`);
-      const examIds = instExams?.map(e => e.id) || [];
+        .eq('user_id', userId);
+
+      const { data: taughtExams } = await supabase
+        .from('exams')
+        .select('id')
+        .ilike('instructor', `%${instructorName}%`);
+
+      // Merge and remove duplicates
+      const allInstExams = Array.from(new Map(
+        [...(ownedExams || []), ...(taughtExams || [])].map(item => [item.id, item])
+      ).values());
+
+      const examIds = allInstExams.map(e => e.id);
 
       // 4. Calculate Monthly Courses Added
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const monthlyCourseCounts: Record<string, number> = {};
-
-      const { data: allInstCourses } = await supabase
-        .from('courses')
-        .select('created_at')
-        .or(`user_id.eq.${userId},instructor.eq."${instructorName}"`);
 
       if (allInstCourses) {
         allInstCourses.forEach(c => {
